@@ -37,14 +37,20 @@ var log = &common.Log
 var UserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/150.0.0.0 Safari/537.36"
 
 func createCollector(domains ...string) *colly.Collector {
-	// Also allow the www. variant of each domain: colly's AllowedDomains is
-	// an exact host match, so single-scene URLs pasted with a www. prefix
-	// (e.g. https://www.realitylovers.com/...) were rejected with a silent
+	// Also allow the www./naked counterpart of each domain: colly's
+	// AllowedDomains is an exact host match, so a single-scene URL pasted
+	// with a host variant the scraper didn't register (e.g. a www. prefix
+	// on https://www.realitylovers.com/...) was rejected with a silent
 	// ErrForbiddenDomain and the scrape finished with 0 scenes and no error.
+	// NOTE: several scrapers still pass explicit "www." entries alongside
+	// (or instead of) the bare domain; those are now redundant and could be
+	// removed in a cleanup, but are left untouched to keep this change minimal.
 	allowed := make([]string, 0, len(domains)*2)
 	for _, d := range domains {
 		allowed = append(allowed, d)
-		if !strings.HasPrefix(d, "www.") {
+		if strings.HasPrefix(d, "www.") {
+			allowed = append(allowed, strings.TrimPrefix(d, "www."))
+		} else {
 			allowed = append(allowed, "www."+d)
 		}
 	}

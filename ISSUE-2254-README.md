@@ -17,9 +17,14 @@ Proven live: `https://www.realitylovers.com/vd/160944479/Blowjob-Anniversary`
 
 ## What this branch changes
 
-`pkg/scrape/scrape.go` `createCollector()`: also allow the `www.` variant of
-each registered domain (skipped when already prefixed). One place, all ~50
-scrapers fixed. No behavior change for already-working URLs.
+`pkg/scrape/scrape.go` `createCollector()`: also allow the `www.`/naked
+counterpart of each registered domain, in both directions (a `www.`-only
+registration like `www.fuckpassvr.com` now also accepts the naked host).
+One place, all ~50 scrapers fixed. No behavior change for already-working
+URLs. The per-scraper explicit `www.` entries that already exist
+(`caribbeancom`, `vr3000`, `kink`, `fuckpassvr`, …) are now redundant and
+could be removed in a follow-up cleanup; left in place here to keep the
+diff minimal.
 
 ## How to test
 
