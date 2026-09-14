@@ -45,8 +45,10 @@ func RealityLoversSite(wg *models.ScrapeWG, updateSite bool, knownScenes []strin
 			sc.Gallery = append(sc.Gallery, e.ChildAttr("img", "src"))
 		})
 
-		// Incase we scrape a single scene use one of the gallery images for the cover
-		if singleSceneURL != "" {
+		// Incase we scrape a single scene use one of the gallery images for the cover.
+		// Guarded: wall/partial pages have no gallery and Gallery[0] panics,
+		// taking the whole process down (no recover in the scrape path).
+		if singleSceneURL != "" && len(sc.Gallery) > 0 {
 			sc.Covers = append(sc.Covers, sc.Gallery[0])
 		}
 
