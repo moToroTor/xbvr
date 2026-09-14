@@ -15,6 +15,51 @@ import (
 	"github.com/xbapps/xbvr/pkg/models"
 )
 
+func vrhushString(m map[string]interface{}, key string) (string, bool) {
+	if m == nil {
+		return "", false
+	}
+	v, ok := m[key]
+	if !ok || v == nil {
+		return "", false
+	}
+	s, ok := v.(string)
+	if !ok {
+		return "", false
+	}
+	return s, true
+}
+
+func vrhushMap(m map[string]interface{}, key string) (map[string]interface{}, bool) {
+	if m == nil {
+		return nil, false
+	}
+	v, ok := m[key]
+	if !ok || v == nil {
+		return nil, false
+	}
+	mp, ok := v.(map[string]interface{})
+	if !ok || mp == nil {
+		return nil, false
+	}
+	return mp, true
+}
+
+func vrhushSlice(m map[string]interface{}, key string) ([]interface{}, bool) {
+	if m == nil {
+		return nil, false
+	}
+	v, ok := m[key]
+	if !ok || v == nil {
+		return nil, false
+	}
+	s, ok := v.([]interface{})
+	if !ok || s == nil {
+		return nil, false
+	}
+	return s, true
+}
+
 func VRHush(wg *models.ScrapeWG, updateSite bool, knownScenes []string, out chan<- models.ScrapedScene, singleSceneURL string, singeScrapeAdditionalInfo string, limitScraping bool) error {
 	defer wg.Done()
 	scraperID := "vrhush"
@@ -39,65 +84,98 @@ func VRHush(wg *models.ScrapeWG, updateSite bool, knownScenes []string, out chan
 		e.ForEach(`script[Id="__NEXT_DATA__"]`, func(id int, e *colly.HTMLElement) {
 			json.Unmarshal([]byte(e.Text), &jsonResult)
 		})
-		jsonResult = jsonResult["props"].(map[string]interface{})
-		jsonResult = jsonResult["pageProps"].(map[string]interface{})
-		content := jsonResult["content"].(map[string]interface{})
+		props, ok := vrhushMap(jsonResult, "props")
+		if !ok {
+			return
+		}
+		pageProps, ok := vrhushMap(props, "pageProps")
+		if !ok {
+			return
+		}
+		jsonResult = pageProps
+		content, ok := vrhushMap(pageProps, "content")
+		if !ok {
+			return
+		}
 
 		// Scene ID - get from json scene code (url no longer has the code)
-		if _, ok := content["scene_code"]; ok {
-			tmp := strings.Split(content["scene_code"].(string), "_")[0]
-			sc.SiteID = strings.Replace(tmp, "vrh", "", -1)
-		} else {
+		sceneCode, ok := vrhushString(content, "scene_code")
+		if !ok || sceneCode == "" {
 			log.Warnf("Unable to process %s - no scene code", e.Request.URL)
 			return
 		}
+		tmp := strings.Split(sceneCode, "_")[0]
+		sc.SiteID = strings.Replace(tmp, "vrh", "", -1)
 		sc.SceneID = slugify.Slugify(sc.Site) + "-" + sc.SiteID
 
 		// Title / Cover
-		if _, ok := content["title"]; ok {
-			sc.Title = content["title"].(string)
+		if title, ok := vrhushString(content, "title"); ok {
+			sc.Title = title
 		}
 
-		if _, ok := content["trailer_screencap"]; ok {
-			sc.Covers = append(sc.Covers, e.Request.AbsoluteURL(content["trailer_screencap"].(string)))
+		if screencap, ok := vrhushString(content, "trailer_screencap"); ok && screencap != "" {
+			sc.Covers = append(sc.Covers, e.Request.AbsoluteURL(screencap))
 		}
 
 		// Synopsis
-		if _, ok := content["description"]; ok {
-			sc.Synopsis = content["description"].(string)
+		if synopsis, ok := vrhushString(content, "description"); ok {
+			sc.Synopsis = synopsis
 		}
 
 		// Tags
-		if _, ok := content["tags"]; ok {
-			tagList := content["tags"].([]interface{})
+		if tagList, ok := vrhushSlice(content, "tags"); ok {
 			for _, tag := range tagList {
-				sc.Tags = append(sc.Tags, tag.(string))
+				if tagStr, ok := tag.(string); ok {
+					sc.Tags = append(sc.Tags, tagStr)
+				}
 			}
 		}
 
 		// Cast
 		sc.ActorDetails = make(map[string]models.ActorDetails)
-		if _, ok := content["models"]; ok {
-			modelList := jsonResult["models"].([]interface{})
+		modelList, ok := vrhushSlice(jsonResult, "models")
+		if !ok {
+			modelList, ok = vrhushSlice(content, "models")
+		}
+		if ok {
 			for _, model := range modelList {
-				modelMap, _ := model.(map[string]interface{})
-				if modelMap["gender"] == "Female" {
-					sc.Cast = append(sc.Cast, modelMap["name"].(string))
-					sc.ActorDetails[modelMap["name"].(string)] = models.ActorDetails{Source: sc.ScraperID + " scrape", ProfileUrl: "https://vrhush.com/models/" + modelMap["slug"].(string)}
+				modelMap, ok := model.(map[string]interface{})
+				if !ok || modelMap == nil {
+					continue
+				}
+				gender, _ := vrhushString(modelMap, "gender")
+				if gender == "Female" {
+					name, ok := vrhushString(modelMap, "name")
+					if !ok || name == "" {
+						continue
+					}
+					sc.Cast = append(sc.Cast, name)
+					slug, _ := vrhushString(modelMap, "slug")
+					sc.ActorDetails[name] = models.ActorDetails{Source: sc.ScraperID + " scrape", ProfileUrl: "https://vrhush.com/models/" + slug}
 				}
 			}
 		}
 
 		// Date & duration
-		if _, ok := content["publish_date"]; ok {
-			tmpDate, _ := goment.New(content["publish_date"].(string), "YYYY/MM/DD")
+		if publishDate, ok := vrhushString(content, "publish_date"); ok && publishDate != "" {
+			tmpDate, _ := goment.New(publishDate, "YYYY/MM/DD")
 			sc.Released = tmpDate.Format("YYYY-MM-DD")
 		}
-		if _, ok := content["videos_duration"]; ok {
-			dur_str := content["videos_duration"].(string)
-			if dur_str != "" {
-				num, _ := strconv.ParseFloat(dur_str, 64)
-				sc.Duration = int(num / 60)
+		if v, ok := content["videos_duration"]; ok && v != nil {
+			switch dur := v.(type) {
+			case string:
+				if dur != "" {
+					num, _ := strconv.ParseFloat(dur, 64)
+					sc.Duration = int(num / 60)
+				}
+			case float64:
+				sc.Duration = int(dur / 60)
+			case float32:
+				sc.Duration = int(float64(dur) / 60)
+			case int:
+				sc.Duration = dur / 60
+			case int64:
+				sc.Duration = int(dur / 60)
 			}
 		}
 		// trailer details
@@ -114,16 +192,18 @@ func VRHush(wg *models.ScrapeWG, updateSite bool, knownScenes []string, out chan
 		sc.TrailerSrc = string(tmpjson)
 
 		// Filenames
-		if _, ok := content["videos"]; ok {
-			videolList := content["videos"].(map[string]interface{})
-			for _, video := range videolList {
-				videoMap, _ := video.(map[string]interface{})
-				if _, ok := videoMap["file"]; ok {
-					tmp := strings.Split(videoMap["file"].(string), "/")
+		if videos, ok := vrhushMap(content, "videos"); ok {
+			for _, video := range videos {
+				videoMap, ok := video.(map[string]interface{})
+				if !ok || videoMap == nil {
+					continue
+				}
+				if file, ok := vrhushString(videoMap, "file"); ok && file != "" {
+					tmp := strings.Split(file, "/")
 					sc.Filenames = append(sc.Filenames, tmp[len(tmp)-1])
 				} else {
-					if _, ok := videoMap["url"]; ok {
-						parsedURL, _ := url.Parse(videoMap["url"].(string))
+					if rawURL, ok := vrhushString(videoMap, "url"); ok && rawURL != "" {
+						parsedURL, _ := url.Parse(rawURL)
 						baseName := path.Base(parsedURL.Path)
 						sc.Filenames = append(sc.Filenames, baseName)
 					}
