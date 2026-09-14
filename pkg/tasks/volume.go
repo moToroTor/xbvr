@@ -250,10 +250,23 @@ func scanLocalVolume(vol models.Volume, db *gorm.DB, tlog *logrus.Entry) {
 		filenameSeparator := regexp.MustCompile("[ _.-]+")
 
 		for j, path := range videoProcList {
-			fStat, _ := os.Stat(path)
+			fStat, err := os.Stat(path)
+			if err != nil {
+				// File vanished between the directory walk and processing
+				// (moved/deleted mid-scan, xbapps/xbvr#1459): drop the stale
+				// row instead of crashing on a nil FileInfo.
+				tlog.Errorf("Skipping %s, stat failed: %s", path, err)
+				db.Where(&models.File{
+					Path:     filepath.Dir(path),
+					Filename: filepath.Base(path),
+					Type:     "video",
+				}).Delete(&models.File{})
+				continue
+			}
 			fTimes, err := times.Stat(path)
 			if err != nil {
 				tlog.Errorf("Can't get the modification/creation times for %s, error: %s", path, err)
+				continue
 			}
 
 			var birthtime time.Time
@@ -355,8 +368,16 @@ func scanLocalVolume(vol models.Volume, db *gorm.DB, tlog *logrus.Entry) {
 				Type:     "script",
 			}).FirstOrCreate(&fl)
 
-			fStat, _ := os.Stat(path)
-			fTimes, _ := times.Stat(path)
+			fStat, err := os.Stat(path)
+			if err != nil {
+				tlog.Errorf("Skipping %s, stat failed: %s", path, err)
+				continue
+			}
+			fTimes, err := times.Stat(path)
+			if err != nil {
+				tlog.Errorf("Skipping %s, times failed: %s", path, err)
+				continue
+			}
 
 			if fStat.Size() != fl.Size {
 				fl.Size = fStat.Size()
