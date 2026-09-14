@@ -27,3 +27,13 @@ scrapers fixed. No behavior change for already-working URLs.
 2. Fresh-DB single-scene scrape with a `www.` URL (any site) → scene indexes
    instead of a silent 0-scene run.
 3. Regression: naked-domain single scrapes and full site scrapes unchanged.
+
+## Live test result (2026-09-14, NAS via ProtonVPN)
+- Before: `www.` URL → instant silent finish, 0 scenes, nothing logged.
+- After: `visiting https://www.realitylovers.com/...` in log, 1 row indexed
+  (`realitylovers-160944479`), server stays up. (Single row because the gate
+  served the wall variant this run — dual-emit of both perspectives is proven
+  separately on fix/300.)
+- Bonus find during testing: unguarded `sc.Gallery[0]` panicked (exit 2) on
+  gallery-less pages, killing the whole server. Guarded on both this branch
+  and fix/300; crash gone.
