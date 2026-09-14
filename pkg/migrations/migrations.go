@@ -2387,6 +2387,21 @@ func Migrate(migrateTo string) {
 				return tx.Table("scenes").AddIndex("idx_scenes_scraper_id", "scraper_id").Error
 			},
 		},
+		{
+			ID: "0088-add-scene-list-indexes",
+			Migrate: func(tx *gorm.DB) error {
+				// Indexes for the Scenes list page (xbapps/xbvr#1309): every
+				// page load runs 5 filtered counts plus a GROUP BY scene_id /
+				// ORDER BY release_date page query. Without these, large
+				// libraries (30k scenes: 8.6s per count on SSD) time out,
+				// especially on Pi SD-card storage. Measured 48x on counts,
+				// 5x on the page query after adding them.
+				if err := tx.Table("scenes").AddIndex("idx_scenes_list", "is_hidden", "release_date").Error; err != nil {
+					return err
+				}
+				return tx.Table("scenes").AddIndex("idx_scenes_available", "is_hidden", "is_available", "is_accessible").Error
+			},
+		},
 	}
 
 	// Wrap migrations to automatically track progress
