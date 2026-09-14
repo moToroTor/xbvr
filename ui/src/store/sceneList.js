@@ -24,6 +24,8 @@ const defaultFilterState = {
   cuepoint: [],
   attributes: [],
   volume: 0,
+  filename: '',
+  file_path: '',
   sort: 'release_desc'
 }
 

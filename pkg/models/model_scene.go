@@ -680,6 +680,8 @@ type RequestSceneList struct {
 	Attributes   []optional.String `json:"attributes"`
 	Volume       optional.Int      `json:"volume"`
 	Released     optional.String   `json:"releaseMonth"`
+	Filename     optional.String   `json:"filename"`
+	FilePath     optional.String   `json:"file_path"`
 	Sort         optional.String   `json:"sort"`
 }
 
@@ -790,6 +792,23 @@ func queryScenes(db *gorm.DB, r RequestSceneList) (*gorm.DB, *gorm.DB) {
 		tx = tx.
 			Joins("left join files on files.scene_id=scenes.id").
 			Where("files.volume_id = ?", r.Volume.OrElse(0))
+	}
+	filesJoined := r.Volume.Present() && r.Volume.OrElse(0) != 0
+	ensureFilesJoin := func() {
+		if !filesJoined {
+			tx = tx.Joins("left join files on files.scene_id=scenes.id")
+			filesJoined = true
+		}
+	}
+
+	if r.Filename.Present() && r.Filename.OrElse("") != "" {
+		ensureFilesJoin()
+		tx = tx.Where("files.filename LIKE ?", "%"+r.Filename.OrElse("")+"%")
+	}
+
+	if r.FilePath.Present() && r.FilePath.OrElse("") != "" {
+		ensureFilesJoin()
+		tx = tx.Where("files.path LIKE ?", "%"+r.FilePath.OrElse("")+"%")
 	}
 
 	for _, i := range r.Lists {
@@ -1215,6 +1234,18 @@ func queryScenes(db *gorm.DB, r RequestSceneList) (*gorm.DB, *gorm.DB) {
 		tx = tx.Order("scene_id desc")
 	case "site_asc":
 		tx = tx.Order("scenes.site")
+	case "filename_asc":
+		ensureFilesJoin()
+		tx = tx.Order("files.filename asc")
+	case "filename_desc":
+		ensureFilesJoin()
+		tx = tx.Order("files.filename desc")
+	case "file_path_asc":
+		ensureFilesJoin()
+		tx = tx.Order("files.path asc")
+	case "file_path_desc":
+		ensureFilesJoin()
+		tx = tx.Order("files.path desc")
 	case "random":
 		if dbConn.Driver == "mysql" {
 			tx = tx.Order("rand()")

@@ -35,6 +35,7 @@ type RequestFileList struct {
 	Framerates  []optional.String `json:"framerates"`
 	Bitrates    []optional.String `json:"bitrates"`
 	Filename    optional.String   `json:"filename"`
+	Path        optional.String   `json:"path"`
 }
 
 type FilesResource struct{}
@@ -169,6 +170,11 @@ func (i FilesResource) listFiles(req *restful.Request, resp *restful.Response) {
 		tx = tx.Where("filename like ?", "%"+r.Filename.OrElse("")+"%")
 	}
 
+	// Path
+	if len(r.Path.OrElse("")) > 0 {
+		tx = tx.Where("path like ?", "%"+r.Path.OrElse("")+"%")
+	}
+
 	// Creation date
 	if len(r.CreatedDate) == 2 {
 		t0, _ := time.Parse(time.RFC3339, r.CreatedDate[0].OrElse(""))
@@ -182,6 +188,10 @@ func (i FilesResource) listFiles(req *restful.Request, resp *restful.Response) {
 		tx = tx.Order("filename asc")
 	case "filename_desc":
 		tx = tx.Order("filename desc")
+	case "path_asc":
+		tx = tx.Order("path asc")
+	case "path_desc":
+		tx = tx.Order("path desc")
 	case "created_time_asc":
 		tx = tx.Order("created_time asc")
 	case "created_time_desc":
