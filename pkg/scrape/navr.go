@@ -17,8 +17,8 @@ func NaughtyAmericaVR(wg *models.ScrapeWG, updateSite bool, knownScenes []string
 	siteID := "NaughtyAmerica VR"
 	logScrapeStart(scraperID, siteID)
 
-	sceneCollector := createCollector("www.naughtyamerica.com")
-	siteCollector := createCollector("www.naughtyamerica.com")
+	sceneCollector := createCollector("naughtyamerica.com")
+	siteCollector := createCollector("naughtyamerica.com")
 
 	sceneCollector.OnHTML(`html`, func(e *colly.HTMLElement) {
 		sc := models.ScrapedScene{}

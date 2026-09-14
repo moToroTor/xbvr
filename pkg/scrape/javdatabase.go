@@ -11,7 +11,7 @@ import (
 )
 
 func ScrapeJavDB(out *[]models.ScrapedScene, queryString string) {
-	sceneCollector := createCollector("www.javdatabase.com")
+	sceneCollector := createCollector("javdatabase.com")
 
 	sceneCollector.OnHTML(`html`, func(html *colly.HTMLElement) {
 		sc := models.ScrapedScene{}

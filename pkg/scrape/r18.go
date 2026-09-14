@@ -13,8 +13,8 @@ import (
 )
 
 func ScrapeR18(knownScenes []string, out *[]models.ScrapedScene, queryString string) error {
-	sceneCollector := createCollector("www.r18.com")
-	siteCollector := createCollector("www.r18.com")
+	sceneCollector := createCollector("r18.com")
+	siteCollector := createCollector("r18.com")
 	siteCollector.CacheDir = ""
 
 	sceneCollector.OnHTML(`html`, func(e *colly.HTMLElement) {

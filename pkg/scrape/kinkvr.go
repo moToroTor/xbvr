@@ -18,8 +18,8 @@ func KinkVR(wg *models.ScrapeWG, updateSite bool, knownScenes []string, out chan
 	siteID := "KinkVR"
 	logScrapeStart(scraperID, siteID)
 
-	sceneCollector := createCollector("www.kink.com", "kink.com")
-	siteCollector := createCollector("www.kink.com", "kink.com")
+	sceneCollector := createCollector("kink.com")
+	siteCollector := createCollector("kink.com")
 
 	setAgeGateCookie := func(r *colly.Request) {
 		r.Headers.Set("Cookie", "age_gate_accepted=1")

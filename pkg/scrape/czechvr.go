@@ -18,8 +18,8 @@ func CzechVR(wg *models.ScrapeWG, updateSite bool, knownScenes []string, out cha
 	logScrapeStart(scraperID, siteID)
 	commonDb, _ := models.GetCommonDB()
 
-	sceneCollector := createCollector("www.czechvrnetwork.com")
-	siteCollector := createCollector("www.czechvrnetwork.com")
+	sceneCollector := createCollector("czechvrnetwork.com")
+	siteCollector := createCollector("czechvrnetwork.com")
 	siteCollector.MaxDepth = 5
 
 	sceneCollector.OnHTML(`html`, func(e *colly.HTMLElement) {

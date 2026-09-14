@@ -16,7 +16,7 @@ func TransVR(wg *models.ScrapeWG, updateSite bool, knownScenes []string, out cha
 	defer wg.Done()
 	scraperID := "transvr"
 	siteID := "TransVR"
-	allowedDomains := []string{"transvr.com", "www.transvr.com", "www.groobyod.com"}
+	allowedDomains := []string{"transvr.com", "groobyod.com"}
 	logScrapeStart(scraperID, siteID)
 
 	sceneCollector := createCollector(allowedDomains...)

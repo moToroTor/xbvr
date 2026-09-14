@@ -20,7 +20,7 @@ func UpCloseVR(wg *models.ScrapeWG, updateSite bool, knownScenes []string, out c
 	siteID := "UpCloseVR"
 	logScrapeStart(scraperID, siteID)
 
-	siteCollector := createCollector("www.upclosevr.com")
+	siteCollector := createCollector("upclosevr.com")
 
 	siteCollector.OnHTML(`script`, func(e *colly.HTMLElement) {
 		apiKeyRegex := regexp.MustCompile(`"apiKey":"(.+)"}},"site`)

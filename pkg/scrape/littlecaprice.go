@@ -16,8 +16,8 @@ func LittleCaprice(wg *models.ScrapeWG, updateSite bool, knownScenes []string, o
 	siteID := "Little Caprice Dreams"
 	logScrapeStart(scraperID, siteID)
 
-	sceneCollector := createCollector("www.littlecaprice-dreams.com")
-	siteCollector := createCollector("www.littlecaprice-dreams.com")
+	sceneCollector := createCollector("littlecaprice-dreams.com")
+	siteCollector := createCollector("littlecaprice-dreams.com")
 	galleryCollector := cloneCollector(sceneCollector)
 
 	sceneCollector.OnHTML(`html`, func(e *colly.HTMLElement) {

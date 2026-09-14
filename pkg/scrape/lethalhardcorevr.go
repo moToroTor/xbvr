@@ -94,7 +94,7 @@ func LethalHardcoreSite(wg *models.ScrapeWG, updateSite bool, knownScenes []stri
 
 	// The site is a React app that renders nothing server side; its data comes
 	// from the shared Gamma Algolia index, keyed by availableOnSite.
-	keyCollector := createCollector("www."+siteHost, siteHost)
+	keyCollector := createCollector(siteHost)
 
 	var apiKey, appID string
 	keyCollector.OnHTML(`html`, func(e *colly.HTMLElement) {

@@ -32,7 +32,7 @@ func VRSpy(wg *models.ScrapeWG, updateSite bool, knownScenes []string, out chan<
 	// Track successful scene scrapes for auto limit scraping
 	scrapeSuccessful := false
 
-	allowedDomains := []string{domain, "www." + domain}
+	allowedDomains := []string{domain}
 	sceneCollector := createCollector(allowedDomains...)
 	siteCollector := createCollector(allowedDomains...)
 
@@ -381,7 +381,9 @@ func VRSpy(wg *models.ScrapeWG, updateSite bool, knownScenes []string, out chan<
 	})
 
 	if singleSceneURL != "" {
-		// Ensure single scene URL uses www subdomain
+		// Normalise to the www. host, which is what this site serves
+		// (see baseURL above). This is site-required, not a collector
+		// workaround: createCollector already accepts either pasted form.
 		if !strings.Contains(singleSceneURL, "www.") && strings.Contains(singleSceneURL, "://") {
 			parts := strings.Split(singleSceneURL, "://")
 			if len(parts) > 1 {

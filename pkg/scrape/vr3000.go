@@ -19,7 +19,7 @@ func VR3000(wg *models.ScrapeWG, updateSite bool, knownScenes []string, out chan
 	siteID := "VR3000"
 	logScrapeStart(scraperID, siteID)
 
-	siteCollector := createCollector("vr3000.com", "www.vr3000.com")
+	siteCollector := createCollector("vr3000.com")
 
 	siteCollector.OnHTML(`.row.no-gutter`, func(e *colly.HTMLElement) {
 		sc := models.ScrapedScene{}

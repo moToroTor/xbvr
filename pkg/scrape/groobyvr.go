@@ -16,7 +16,7 @@ func GroobyVR(wg *models.ScrapeWG, updateSite bool, knownScenes []string, out ch
 	defer wg.Done()
 	scraperID := "groobyvr"
 	siteID := "GroobyVR"
-	allowedDomains := []string{"groobyvr.com", "www.groobyvr.com"}
+	allowedDomains := []string{"groobyvr.com"}
 	logScrapeStart(scraperID, siteID)
 
 	sceneCollector := createCollector(allowedDomains...)

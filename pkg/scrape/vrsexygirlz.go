@@ -17,8 +17,8 @@ func VRSexygirlz(wg *models.ScrapeWG, updateSite bool, knownScenes []string, out
 	siteID := "VRSexyGirlz"
 	logScrapeStart(scraperID, siteID)
 
-	sceneCollector := createCollector("vrsexygirlz.com", "www.vrsexygirlz.com")
-	siteCollector := createCollector("vrsexygirlz.com", "www.vrsexygirlz.com")
+	sceneCollector := createCollector("vrsexygirlz.com")
+	siteCollector := createCollector("vrsexygirlz.com")
 
 	sceneCollector.OnHTML(`html`, func(e *colly.HTMLElement) {
 		sc := models.ScrapedScene{}

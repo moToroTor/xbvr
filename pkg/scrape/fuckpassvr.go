@@ -23,8 +23,8 @@ func FuckPassVR(wg *models.ScrapeWG, updateSite bool, knownScenes []string, out 
 	siteID := "FuckPassVR"
 	logScrapeStart(scraperID, siteID)
 
-	sceneCollector := createCollector("www.fuckpassvr.com")
-	siteCollector := createCollector("www.fuckpassvr.com")
+	sceneCollector := createCollector("fuckpassvr.com")
+	siteCollector := createCollector("fuckpassvr.com")
 
 	client := resty.New()
 	client.SetHeader("User-Agent", UserAgent)

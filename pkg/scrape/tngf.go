@@ -17,8 +17,8 @@ func TNGFVR(wg *models.ScrapeWG, updateSite bool, knownScenes []string, out chan
 	siteID := "Tonight's Girlfriend VR"
 	logScrapeStart(scraperID, siteID)
 
-	sceneCollector := createCollector("www.tonightsgirlfriend.com")
-	siteCollector := createCollector("www.tonightsgirlfriend.com")
+	sceneCollector := createCollector("tonightsgirlfriend.com")
+	siteCollector := createCollector("tonightsgirlfriend.com")
 
 	sceneCollector.OnHTML(`html`, func(e *colly.HTMLElement) {
 		sc := models.ScrapedScene{}

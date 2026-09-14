@@ -12,7 +12,7 @@ import (
 )
 
 func ScrapeJavLibrary(out *[]models.ScrapedScene, queryString string) {
-	sceneCollector := createCollector("www.javlibrary.com")
+	sceneCollector := createCollector("javlibrary.com")
 
 	sceneCollector.OnHTML(`html`, func(e *colly.HTMLElement) {
 		// This html page might be the redirected video details page, or the search results,

@@ -23,8 +23,21 @@ var log = &common.Log
 var UserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36"
 
 func createCollector(domains ...string) *colly.Collector {
+	// Also allow the www./naked counterpart of each domain: colly's
+	// AllowedDomains is an exact host match, so a single-scene URL pasted
+	// with a host variant the scraper didn't register was rejected with a
+	// silent ErrForbiddenDomain and the scrape finished with 0 scenes.
+	allowed := make([]string, 0, len(domains)*2)
+	for _, d := range domains {
+		allowed = append(allowed, d)
+		if strings.HasPrefix(d, "www.") {
+			allowed = append(allowed, strings.TrimPrefix(d, "www."))
+		} else {
+			allowed = append(allowed, "www."+d)
+		}
+	}
 	c := colly.NewCollector(
-		colly.AllowedDomains(domains...),
+		colly.AllowedDomains(allowed...),
 		colly.CacheDir(getScrapeCacheDir()),
 		colly.UserAgent(UserAgent),
 	)
