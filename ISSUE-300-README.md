@@ -80,3 +80,10 @@ branch's exact selectors (`input#POV`, `input#VOYEUR`) yield both perspectives
 via goquery (colly's engine) → dual emit fires; single-version pages keep the
 legacy ID. Fixture not committed (third-party HTML); check above is reproducible
 with any saved scene page.
+
+## Gate status (2026-09-14, final)
+Reporter-confirmed: the age wall keys off IP reputation and stands against any
+dumb HTTP client from flagged egress (all VPN/datacenter exits tried, cookies
+and browser headers included) — only real browsers pass. The cookie lines in
+this branch match the site's own gate JS and are harmless, but treat them as
+best-effort: the provable fix here is the dual emit, verified above.
