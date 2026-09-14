@@ -1,4 +1,4 @@
-# Fix: colly AllowedDomains rejects www. URLs — single-scene scrapes die silently
+# Fix for xbapps/xbvr#2254 — colly AllowedDomains rejects www. URLs — single-scene scrapes die silently
 
 Related: xbapps/xbvr#300 (found while verifying it).
 
