@@ -56,14 +56,14 @@ func VirtualTaboo(wg *models.ScrapeWG, updateSite bool, knownScenes []string, ou
 		if len(filenameMatch) == 2 {
 			base = filenameMatch[1]
 		}
-		sc.Filenames = append(sc.Filenames, base+"-files-smartphone_180_LR.mp4")
-		sc.Filenames = append(sc.Filenames, base+"-files-gear_180_LR.mp4")
-		sc.Filenames = append(sc.Filenames, base+"-files-psvr_180_sbs.mp4")
-		sc.Filenames = append(sc.Filenames, base+"-files-oculus_180_LR.mp4")
-		sc.Filenames = append(sc.Filenames, base+"-files-oculus5k_180_LR.mp4")
-		sc.Filenames = append(sc.Filenames, base+"-files-oculus5k10_180_LR.mp4")
-		sc.Filenames = append(sc.Filenames, base+"-files-6k_180_LR.mp4")
-		sc.Filenames = append(sc.Filenames, base+"-files-7k_180_LR.mp4")
+		sc.Filenames = append(sc.Filenames, base+"-files-*-smartphone*.mp4")
+		sc.Filenames = append(sc.Filenames, base+"-files-*-gear*.mp4")
+		sc.Filenames = append(sc.Filenames, base+"-files-*-psvr*.mp4")
+		sc.Filenames = append(sc.Filenames, base+"-files-*-oculus*.mp4")
+		sc.Filenames = append(sc.Filenames, base+"-files-*-oculus5k*.mp4")
+		sc.Filenames = append(sc.Filenames, base+"-files-*-oculus5k10*.mp4")
+		sc.Filenames = append(sc.Filenames, base+"-files-*-6k*.mp4")
+		sc.Filenames = append(sc.Filenames, base+"-files-*-7k*.mp4")
 
 		// Cover URLs
 		e.ForEach(`meta[property="og:image"]`, func(id int, e *colly.HTMLElement) {

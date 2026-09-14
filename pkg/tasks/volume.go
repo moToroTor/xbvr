@@ -89,6 +89,42 @@ func RescanVolumes(id int) {
 			if err != nil {
 				log.Error(err, " when matching "+unescapedFilename)
 			}
+			if len(scenes) == 0 {
+				// Fallback for wildcard patterns (e.g. VirtualTaboo numeric IDs, see #348):
+				// stored entries may contain `*`/`?`, matched with filepath.Match
+				var wildcardScenes []models.Scene
+				db.Where("filenames_arr LIKE ? OR filenames_arr LIKE ?", "%*%", "%?%").Find(&wildcardScenes)
+				unescapedVariants := []string{
+					unescapedFilename,
+					strings.Replace(unescapedFilename, ".funscript", ".mp4", -1),
+					strings.Replace(unescapedFilename, ".hsp", ".mp4", -1),
+					strings.Replace(unescapedFilename, ".srt", ".mp4", -1),
+					strings.Replace(unescapedFilename, ".cmscript", ".mp4", -1),
+				}
+			outer:
+				for i := range wildcardScenes {
+					var patterns []string
+					if err := json.Unmarshal([]byte(wildcardScenes[i].FilenamesArr), &patterns); err != nil {
+						continue
+					}
+					for _, pat := range patterns {
+						if !strings.ContainsAny(pat, "*?") {
+							continue
+						}
+						patBase := path.Base(pat)
+						for _, cand := range unescapedVariants {
+							if ok, _ := filepath.Match(patBase, cand); ok {
+								scenes = append(scenes, wildcardScenes[i])
+								continue outer
+							}
+							if ok, _ := filepath.Match(patBase, filename); ok {
+								scenes = append(scenes, wildcardScenes[i])
+								continue outer
+							}
+						}
+					}
+				}
+			}
 			if len(scenes) == 0 && config.Config.Advanced.UseAltSrcInFileMatching {
 				// check if the filename matches in external_reference record
 
