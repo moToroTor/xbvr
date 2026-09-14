@@ -204,6 +204,41 @@ func (me *contentDirectoryService) xbaseFileToContainer(file models.File, parent
 	return item
 }
 
+// dlnaProjectionSuffix maps a detected VideoProjection to the filename
+// suffix appended to DLNA container titles. VR players pick their
+// projection from these tokens, so the suffix must reflect the file
+// instead of always claiming 180 SBS.
+func dlnaProjectionSuffix(projection string) string {
+	switch projection {
+	case "flat":
+		return "_flat_2d.mp4"
+	case "180_mono":
+		return "_180_180x180_mono.mp4"
+	case "180_tb":
+		return "_180_180x180_3dh_TB.mp4"
+	case "360_mono":
+		return "_360_360x180_mono.mp4"
+	case "360_tb":
+		return "_360_360x180_3dh_TB.mp4"
+	case "fisheye":
+		return "_180_fisheye_3dh_LR.mp4"
+	case "fisheye190":
+		return "_190_fisheye190_3dh_LR.mp4"
+	case "mkx200":
+		return "_200_mkx200_3dh_LR.mp4"
+	case "mkx220":
+		return "_220_mkx220_3dh_LR.mp4"
+	case "vrca220":
+		return "_220_vrca220_3dh_LR.mp4"
+	case "rf52":
+		return "_190_rf52_3dh_LR.mp4"
+	case "180_sbs", "":
+		return "_180_180x180_3dh_LR.mp4"
+	default:
+		return "_180_180x180_3dh_LR.mp4"
+	}
+}
+
 func (me *contentDirectoryService) sceneToContainer(scene models.Scene, parent string, host string) interface{} {
 	c := make([]string, 0)
 	for i := range scene.Cast {
@@ -214,6 +249,8 @@ func (me *contentDirectoryService) sceneToContainer(scene models.Scene, parent s
 	if err != nil || len(videoFiles) == 0 {
 		return nil
 	}
+
+	file := videoFiles[0]
 
 	iconURI := (&url.URL{
 		Scheme: "http",
@@ -230,7 +267,7 @@ func (me *contentDirectoryService) sceneToContainer(scene models.Scene, parent s
 		ID:          scene.SceneID,
 		Restricted:  1,
 		ParentID:    parent,
-		Title:       strings.Join(c, ", ") + " - " + scene.Title + " _180_180x180_3dh_LR.mp4",
+		Title:       strings.Join(c, ", ") + " - " + scene.Title + " " + dlnaProjectionSuffix(file.VideoProjection),
 		Icon:        iconURI,
 		AlbumArtURI: iconURI,
 	}
@@ -241,7 +278,6 @@ func (me *contentDirectoryService) sceneToContainer(scene models.Scene, parent s
 		Res:    make([]upnpav.Resource, 0, 2),
 	}
 
-	file := videoFiles[0]
 	mimeType := "video/mp4"
 
 	item.Res = append(item.Res, upnpav.Resource{
