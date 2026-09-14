@@ -101,7 +101,7 @@ func (me *contentDirectoryService) cdsObjectToUpnpavObject(cdsObject object, fil
 	// TODO(anacrolix): This might not be necessary due to item res image
 	// element.
 	obj.AlbumArtURI = iconURI
-	obj.Class = "object.item." + mimeType.Type() + "Item"
+	obj.Class = upnpClassForMimeType(mimeType)
 	var (
 		ffInfo        *ffprobe.Info
 		nativeBitrate uint

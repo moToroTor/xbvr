@@ -41,6 +41,24 @@ func (mt mimeType) IsImage() bool {
 	return strings.HasPrefix(string(mt), "image/")
 }
 
+// upnpClassForMimeType maps a MIME type to a valid UPnP AV class suffix.
+// Unknown or application/* types fall back to videoItem: callers in cds.go
+// only reach this point for video files, and emitting
+// object.item.applicationItem violates the object.item.* AV schema and
+// breaks strict DLNA clients (xbapps/xbvr#725).
+func upnpClassForMimeType(mt mimeType) string {
+	switch {
+	case mt.IsVideo():
+		return "object.item.videoItem"
+	case mt.IsAudio():
+		return "object.item.audioItem"
+	case mt.IsImage():
+		return "object.item.imageItem"
+	default:
+		return "object.item.videoItem"
+	}
+}
+
 // Returns the group "type", the part before the '/'.
 func (mt mimeType) Type() string {
 	return strings.SplitN(string(mt), "/", 2)[0]
