@@ -73,3 +73,10 @@ Build/verify:
 - `go test` intentionally NOT run (broken repo-wide, pre-existing).
 - After scraping the Blowjob Anniversary page, XBVR should hold two
   scenes (`realitylovers-160944479-pov`, `realitylovers-160944479-voyeur`).
+
+## Offline proof (2026-09-14)
+Real scene page saved by reporter (`rl-160944479.html`, Blowjob Anniversary):
+branch's exact selectors (`input#POV`, `input#VOYEUR`) yield both perspectives
+via goquery (colly's engine) → dual emit fires; single-version pages keep the
+legacy ID. Fixture not committed (third-party HTML); check above is reproducible
+with any saved scene page.
