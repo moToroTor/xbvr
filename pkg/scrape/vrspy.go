@@ -381,15 +381,9 @@ func VRSpy(wg *models.ScrapeWG, updateSite bool, knownScenes []string, out chan<
 	})
 
 	if singleSceneURL != "" {
-		// Normalise to the www. host, which is what this site serves
-		// (see baseURL above). This is site-required, not a collector
-		// workaround: createCollector already accepts either pasted form.
-		if !strings.Contains(singleSceneURL, "www.") && strings.Contains(singleSceneURL, "://") {
-			parts := strings.Split(singleSceneURL, "://")
-			if len(parts) > 1 {
-				singleSceneURL = parts[0] + "://www." + strings.TrimPrefix(parts[1], "www.")
-			}
-		}
+		// No host normalisation: the naked host 301-redirects to www. and
+		// createCollector allows both, so either pasted form lands on the
+		// same page (verified live: identical 200 + body both ways).
 		log.Infof("visiting %s", singleSceneURL)
 		sceneCollector.Visit(singleSceneURL)
 	} else {
