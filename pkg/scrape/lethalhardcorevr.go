@@ -2,12 +2,15 @@ package scrape
 
 import (
 	"regexp"
+	"strconv"
 	"strings"
 
+	"github.com/go-resty/resty/v2"
 	"github.com/gocolly/colly/v2"
 	"github.com/mozillazg/go-slugify"
 	"github.com/nleeper/goment"
 	"github.com/thoas/go-funk"
+	"github.com/tidwall/gjson"
 	"github.com/xbapps/xbvr/pkg/models"
 )
 
@@ -25,147 +28,148 @@ func isGoodTag(lookup string) bool {
 	return true
 }
 
-func LethalHardcoreSite(wg *models.ScrapeWG, updateSite bool, knownScenes []string, out chan<- models.ScrapedScene, singleSceneURL string, scraperID string, siteID string, URL string, singeScrapeAdditionalInfo string, limitScraping bool) error {
+func lethalHardcoreScene(jsonString string, queryStr string, scraperID string, siteID string, siteHost string) models.ScrapedScene {
+	sc := models.ScrapedScene{}
+	sc.ScraperID = scraperID
+	sc.SceneType = "VR"
+	sc.Studio = "Celestial Productions"
+	sc.Site = siteID
+	sc.SiteID = gjson.Get(jsonString, queryStr+`.clip_id`).String()
+	sc.SceneID = slugify.Slugify(sc.Site) + "-" + sc.SiteID
+	sc.HomepageURL = "https://www." + siteHost + "/en/video/" + scraperID + "/" +
+		gjson.Get(jsonString, queryStr+`.url_title`).String() + "/" + sc.SiteID
+
+	sc.Title = strings.TrimSpace(gjson.Get(jsonString, queryStr+`.title`).String())
+
+	if d, err := goment.New(gjson.Get(jsonString, queryStr+`.release_date`).String(), "YYYY-MM-DD"); err == nil {
+		sc.Released = d.Format("YYYY-MM-DD")
+	}
+
+	sc.Duration = int(gjson.Get(jsonString, queryStr+`.length`).Int()) / 60
+
+	synopsis := gjson.Get(jsonString, queryStr+`.description`).String()
+	if strings.TrimSpace(synopsis) == "" {
+		synopsis = gjson.Get(jsonString, queryStr+`.movie_desc`).String()
+	}
+	sc.Synopsis = strings.TrimSpace(strings.ReplaceAll(synopsis, "</br></br>", " "))
+
+	if cover := gjson.Get(jsonString, queryStr+`.pictures.1920x1080`).String(); cover != "" {
+		sc.Covers = append(sc.Covers, "https://transform.gammacdn.com/movies/"+cover)
+	}
+
+	sc.ActorDetails = make(map[string]models.ActorDetails)
+	for i := range gjson.Get(jsonString, queryStr+`.actors`).Array() {
+		actorQuery := queryStr + `.actors.` + strconv.Itoa(i)
+		name := strings.TrimSpace(gjson.Get(jsonString, actorQuery+`.name`).String())
+		if name == "" || funk.ContainsString(sc.Cast, name) {
+			continue
+		}
+		sc.Cast = append(sc.Cast, name)
+		sc.ActorDetails[name] = models.ActorDetails{
+			Source: scraperID + " scrape",
+			ProfileUrl: "https://www." + siteHost + "/en/pornstar/view/" +
+				gjson.Get(jsonString, actorQuery+`.url_name`).String() + "/" +
+				gjson.Get(jsonString, actorQuery+`.actor_id`).String(),
+		}
+	}
+
+	for _, name := range gjson.Get(jsonString, queryStr+`.categories.#.name`).Array() {
+		tag := strings.ToLower(strings.TrimSpace(name.String()))
+		if isGoodTag(tag) && !funk.ContainsString(sc.Tags, tag) {
+			sc.Tags = append(sc.Tags, tag)
+		}
+	}
+
+	if trailer := gjson.Get(jsonString, queryStr+`.trailers.0.url`).String(); trailer != "" {
+		sc.TrailerType = "url"
+		sc.TrailerSrc = trailer
+	}
+
+	return sc
+}
+
+func LethalHardcoreSite(wg *models.ScrapeWG, updateSite bool, knownScenes []string, out chan<- models.ScrapedScene, singleSceneURL string, scraperID string, siteID string, siteHost string, singeScrapeAdditionalInfo string, limitScraping bool) error {
 	defer wg.Done()
 	logScrapeStart(scraperID, siteID)
 
-	sceneCollector := createCollector("lethalhardcorevr.com", "whorecraftvr.com")
-	siteCollector := createCollector("lethalhardcorevr.com", "whorecraftvr.com")
+	// The site is a client-rendered React app: the page HTML carries no scene
+	// data. Its data comes from the shared Gamma Algolia index, keyed by
+	// availableOnSite (same platform as upclosevr) — verified live 2026-09-15
+	// (345 hits with full metadata). The old selector code below is dead.
+	keyCollector := createCollector(siteHost, "www."+siteHost)
 
-	sceneCollector.OnHTML(`html`, func(e *colly.HTMLElement) {
-		sc := models.ScrapedScene{}
-		sc.ScraperID = scraperID
-		sc.SceneType = "VR"
-		sc.Studio = "Celestial Productions"
-		sc.HomepageURL = strings.Split(e.Request.URL.String(), "?")[0]
-
-		// Site ID
-		sc.Site = siteID
-
-		// Release Date
-		tmpDate, _ := goment.New(e.Request.Ctx.Get("date"), "MM/DD/YYYY")
-		sc.Released = tmpDate.Format("YYYY-MM-DD")
-
-		// Scene ID - get from URL
-		tmp := strings.Split(sc.HomepageURL, "/")
-		sc.SiteID = tmp[len(tmp)-2]
-		sc.SceneID = slugify.Slugify(sc.Site) + "-" + sc.SiteID
-
-		// Cover
-		e.ForEach(`style`, func(id int, e *colly.HTMLElement) {
-			if id == 0 {
-				html, err := e.DOM.Html()
-				if err == nil {
-					re := regexp.MustCompile(`background\s*?:\s*?url\s*?\(\s*?(.*?)\s*?\)`)
-					i := re.FindStringSubmatch(html)[1]
-					if len(i) > 0 {
-						sc.Covers = append(sc.Covers, re.FindStringSubmatch(html)[1])
-					}
-				}
-			}
-		})
-
-		// trailer details
-		sc.TrailerType = "url"
-		sc.TrailerSrc = e.ChildAttr(`span.link-player-action-inner a.btn`, `href`)
-
-		// Title
-		e.ForEach(`div.item-page-details h1`, func(id int, e *colly.HTMLElement) {
-			if id == 0 {
-				sc.Title = strings.TrimSpace(e.Text)
-			}
-		})
-
-		// Gallery
-		e.ForEach(`div.screenshots-block img`, func(id int, e *colly.HTMLElement) {
-			sc.Gallery = append(sc.Gallery, strings.TrimSpace(e.Attr("src")))
-		})
-
-		// Synposis
-		e.ForEach(`#synopsis-full p`, func(id int, e *colly.HTMLElement) {
-			if id == 0 {
-				sc.Synopsis = strings.TrimSpace(e.Text)
-			}
-		})
-
-		// Cast
-		sc.ActorDetails = make(map[string]models.ActorDetails)
-		r := strings.NewReplacer("(", "", ")", "")
-		e.ForEach(`div.item-page-details a[data-target="#bodyShotModal"]`, func(id int, e *colly.HTMLElement) {
-			img := ""
-			e.ForEach(`img`, func(id int, e *colly.HTMLElement) {
-				style := e.Attr("style")
-				regexPattern := `url\((.*?)\)`
-				regex, _ := regexp.Compile(regexPattern)
-				matches := regex.FindStringSubmatch(style)
-				if len(matches) > 1 {
-					img = matches[1]
-				} else {
-					if e.Attr("src") != "https://imgs1cdn.adultempire.com/res/pm/pixel.gif" {
-						img = e.Attr("src")
-					}
-				}
-
-			})
-			e.ForEach(`.overlay small`, func(id int, e *colly.HTMLElement) {
-				if id <= 1 {
-					sc.Cast = append(sc.Cast, strings.TrimSpace(r.Replace(e.Text)))
-					sc.ActorDetails[strings.TrimSpace(r.Replace(e.Text))] = models.ActorDetails{ImageUrl: img}
-				}
-			})
-		})
-
-		// Tags
-		e.ForEach(`meta[name=Keywords]`, func(id int, e *colly.HTMLElement) {
-			k := strings.Split(e.Attr("content"), ",")
-			for i, tag := range k {
-				if i >= len(k)-2 {
-					for _, actor := range sc.Cast {
-						if funk.Contains(tag, actor) {
-							tag = strings.Replace(tag, actor, "", -1)
-						}
-					}
-				}
-				tag = strings.ToLower(strings.TrimSpace(tag))
-				if isGoodTag(tag) {
-					sc.Tags = append(sc.Tags, tag)
-				}
-			}
-		})
-
-		out <- sc
-	})
-
-	siteCollector.OnHTML(`div.pagination a`, func(e *colly.HTMLElement) {
-		if !limitScraping {
-			pageURL := e.Request.AbsoluteURL(e.Attr("href"))
-			siteCollector.Visit(pageURL)
+	var apiKey, appID string
+	keyCollector.OnHTML(`html`, func(e *colly.HTMLElement) {
+		body, err := e.DOM.Html()
+		if err != nil {
+			return
+		}
+		if m := regexp.MustCompile(`"apiKey":"([^"]+)"`).FindStringSubmatch(body); m != nil {
+			apiKey = m[1]
+		}
+		if m := regexp.MustCompile(`"applicationID":"([^"]+)"`).FindStringSubmatch(body); m != nil {
+			appID = m[1]
 		}
 	})
+	keyCollector.Visit("https://www." + siteHost + "/en/videos")
 
-	siteCollector.OnHTML(`div.scene-list-item`, func(e *colly.HTMLElement) {
-		sceneURL := e.Request.AbsoluteURL(e.ChildAttr(`a`, "href"))
+	if apiKey == "" || appID == "" {
+		log.Errorf("%s: could not read Algolia credentials from the site", siteID)
+		logScrapeFinished(scraperID, siteID)
+		return nil
+	}
 
-		ctx := colly.NewContext()
-		e.ForEach(`p.scene-update-stats a~span`, func(id int, e *colly.HTMLElement) {
-			if id == 0 {
-				ctx.Put("date", strings.TrimSpace(e.Text))
-			}
-		})
-
-		// If scene exist in database, there's no need to scrape
-		if !funk.ContainsString(knownScenes, sceneURL) {
-			sceneCollector.Request("GET", sceneURL, nil, ctx, nil)
+	query := func(params string) (string, error) {
+		payload := `{"requests":[{"indexName":"all_scenes","params":"` + params + `"}]}`
+		r, err := resty.New().R().
+			SetHeader("Origin", "https://www."+siteHost).
+			SetHeader("Referer", "https://www."+siteHost+"/").
+			SetHeader("Content-Type", "application/json").
+			SetHeader("x-algolia-api-key", apiKey).
+			SetHeader("x-algolia-application-id", appID).
+			SetBody(payload).
+			Post("https://" + strings.ToLower(appID) + "-dsn.algolia.net/1/indexes/*/queries")
+		if err != nil {
+			return "", err
 		}
-	})
+		return r.String(), nil
+	}
 
 	if singleSceneURL != "" {
-		ctx := colly.NewContext()
-		ctx.Put("date", "")
-
-		sceneCollector.Visit(singleSceneURL)
+		// New canonical form: .../en/video/<site>/<slug>/<clip_id>
+		parts := strings.Split(strings.TrimSuffix(singleSceneURL, "/"), "/")
+		sceneID := parts[len(parts)-1]
+		jsonString, err := query("facetFilters=%5B%5B%22availableOnSite%3A" + scraperID +
+			"%22%5D%2C%5B%22clip_id%3A" + sceneID + "%22%5D%5D&hitsPerPage=1")
+		if err != nil {
+			log.Errorln(siteID, err)
+		} else if len(gjson.Get(jsonString, "results.0.hits").Array()) > 0 {
+			out <- lethalHardcoreScene(jsonString, "results.0.hits.0", scraperID, siteID, siteHost)
+		}
 	} else {
-		siteCollector.Visit(URL)
+		page := 0
+		for {
+			jsonString, err := query("facetFilters=%5B%5B%22availableOnSite%3A" + scraperID +
+				"%22%5D%5D&hitsPerPage=60&page=" + strconv.Itoa(page))
+			if err != nil {
+				log.Errorln(siteID, err)
+				break
+			}
+			hits := gjson.Get(jsonString, "results.0.hits").Array()
+			if len(hits) == 0 {
+				break
+			}
+			for i := range hits {
+				sc := lethalHardcoreScene(jsonString, "results.0.hits."+strconv.Itoa(i), scraperID, siteID, siteHost)
+				if sc.SceneID != "" && !funk.ContainsString(knownScenes, sc.HomepageURL) {
+					out <- sc
+				}
+			}
+			page++
+			if limitScraping || page >= int(gjson.Get(jsonString, "results.0.nbPages").Int()) {
+				break
+			}
+		}
 	}
 
 	if updateSite {
@@ -176,11 +180,13 @@ func LethalHardcoreSite(wg *models.ScrapeWG, updateSite bool, knownScenes []stri
 }
 
 func LethalHardcoreVR(wg *models.ScrapeWG, updateSite bool, knownScenes []string, out chan<- models.ScrapedScene, singleSceneURL string, singeScrapeAdditionalInfo string, limitScraping bool) error {
-	return LethalHardcoreSite(wg, updateSite, knownScenes, out, singleSceneURL, "lethalhardcorevr", "LethalHardcoreVR", "https://lethalhardcorevr.com/lethal-hardcore-vr-scenes.html?studio=95595&sort=released", singeScrapeAdditionalInfo, limitScraping)
+	return LethalHardcoreSite(wg, updateSite, knownScenes, out, singleSceneURL, "lethalhardcorevr", "LethalHardcoreVR", "lethalhardcorevr.com", singeScrapeAdditionalInfo, limitScraping)
 }
 
 func WhorecraftVR(wg *models.ScrapeWG, updateSite bool, knownScenes []string, out chan<- models.ScrapedScene, singleSceneURL string, singeScrapeAdditionalInfo string, limitScraping bool) error {
-	return LethalHardcoreSite(wg, updateSite, knownScenes, out, singleSceneURL, "whorecraftvr", "WhorecraftVR", "https://lethalhardcorevr.com/lethal-hardcore-vr-scenes.html?studio=95347&sort=released", singeScrapeAdditionalInfo, limitScraping)
+	// NOTE: the index currently returns no scenes for whorecraftvr, so this
+	// registration is kept but appears dead (verified 2026-09-15).
+	return LethalHardcoreSite(wg, updateSite, knownScenes, out, singleSceneURL, "whorecraftvr", "WhorecraftVR", "lethalhardcorevr.com", singeScrapeAdditionalInfo, limitScraping)
 }
 
 func init() {
