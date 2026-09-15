@@ -814,6 +814,31 @@ func BackupBundle(inclAllSites bool, onlyIncludeOfficalSites bool, inclScenes bo
 	return string(content)
 }
 
+// BundleURLScrape polls the configured content-bundle URLs (if any) and
+// imports each through the same RestoreBundle path as a manual URL import.
+// Runs on the bundleSchedule cron; safe defaults for unattended runs are
+// scenes-only across all sites without overwriting local data (issue #667).
+func BundleURLScrape() {
+	urls := config.Config.Advanced.ContentBundleUrls
+	if len(urls) == 0 {
+		return
+	}
+	for _, u := range urls {
+		u = strings.TrimSpace(u)
+		if u == "" {
+			continue
+		}
+		tlog := log.WithField("task", "scrape")
+		tlog.Infof("Polling content bundle from %s", u)
+		RestoreBundle(RequestRestore{
+			InclAllSites: true,
+			InclScenes:   true,
+			Overwrite:    false,
+			BundleUrl:    u,
+		})
+	}
+}
+
 func RestoreBundle(request RequestRestore) {
 	tlog := log.WithField("task", "scrape")
 	if request.BundleUrl != "" {

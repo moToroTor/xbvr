@@ -18,6 +18,7 @@ var previewTask cron.EntryID
 var actorScrapeTask cron.EntryID
 var stashdbScrapeTask cron.EntryID
 var linkScenesTask cron.EntryID
+var bundleTask cron.EntryID
 
 func SetupCron() {
 	cronInstance = cron.New()
@@ -47,6 +48,10 @@ func SetupCron() {
 	if config.Config.Cron.LinkScenesSchedule.Enabled {
 		log.Println(fmt.Sprintf("Setup Link Scenes Task %v", formatCronSchedule(config.CronSchedule(config.Config.Cron.LinkScenesSchedule))))
 		linkScenesTask, _ = cronInstance.AddFunc(formatCronSchedule(config.CronSchedule(config.Config.Cron.LinkScenesSchedule)), linkScenesCron)
+	}
+	if config.Config.Cron.BundleSchedule.Enabled {
+		log.Println(fmt.Sprintf("Setup Bundle Poll Task %v", formatCronSchedule(config.CronSchedule(config.Config.Cron.BundleSchedule))))
+		bundleTask, _ = cronInstance.AddFunc(formatCronSchedule(config.CronSchedule(config.Config.Cron.BundleSchedule)), bundleCron)
 	}
 	cronInstance.Start()
 
@@ -110,6 +115,13 @@ func linkScenesCron() {
 		tasks.MatchAlternateSources()
 	}
 	log.Println(fmt.Sprintf("Next Link Scenes Task at %v", cronInstance.Entry(rescrapTask).Next))
+}
+
+func bundleCron() {
+	if !session.HasActiveSession() {
+		tasks.BundleURLScrape()
+	}
+	log.Println(fmt.Sprintf("Next Bundle Poll Task at %v", cronInstance.Entry(bundleTask).Next))
 }
 
 var previewGenerateInProgress = false
