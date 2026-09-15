@@ -17,6 +17,11 @@ type RequestScrapeJAVR struct {
 	Query   string `json:"q"`
 }
 
+type RequestScrapeJAVRBatch struct {
+	Scraper string `json:"s"`
+	Codes   string `json:"codes"`
+}
+
 type RequestScrapeTPDB struct {
 	ApiToken string `json:"apiToken"`
 	SceneUrl string `json:"sceneUrl"`
@@ -95,6 +100,9 @@ func (i TaskResource) WebService() *restful.WebService {
 		Metadata(restfulspec.KeyOpenAPITags, tags))
 
 	ws.Route(ws.POST("/scrape-javr").To(i.scrapeJAVR).
+		Metadata(restfulspec.KeyOpenAPITags, tags))
+
+	ws.Route(ws.POST("/scrape-javr-batch").To(i.scrapeJAVRBatch).
 		Metadata(restfulspec.KeyOpenAPITags, tags))
 
 	ws.Route(ws.POST("/scrape-tpdb").To(i.scrapeTPDB).
@@ -216,6 +224,26 @@ func (i TaskResource) scrapeJAVR(req *restful.Request, resp *restful.Response) {
 	if r.Query != "" {
 		go tasks.ScrapeJAVR(r.Query, r.Scraper)
 	}
+}
+
+func (i TaskResource) scrapeJAVRBatch(req *restful.Request, resp *restful.Response) {
+	var r RequestScrapeJAVRBatch
+	err := req.ReadEntity(&r)
+	if err != nil {
+		log.Error(err)
+		return
+	}
+
+	codes := tasks.ParseJavCodes(r.Codes)
+	if len(codes) == 0 {
+		return
+	}
+
+	go tasks.ScrapeJAVRBatch(codes, r.Scraper)
+	resp.WriteHeaderAndEntity(http.StatusOK, map[string]interface{}{
+		"response": "OK",
+		"queued":   len(codes),
+	})
 }
 
 func (i TaskResource) scrapeTPDB(req *restful.Request, resp *restful.Response) {
