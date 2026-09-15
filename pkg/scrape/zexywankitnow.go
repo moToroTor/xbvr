@@ -13,6 +13,13 @@ import (
 	"github.com/xbapps/xbvr/pkg/models"
 )
 
+// wankitnowMembersURL maps a public WankItNowVR scene URL to its members URL:
+// members.wankitnowvr.com/m/videos/... vs public wankitnowvr.com/videos/...
+// (issue #1597). Non-matching hosts pass through unchanged.
+func wankitnowMembersURL(homepageURL string) string {
+	return strings.Replace(homepageURL, "wankitnowvr.com/videos/", "members.wankitnowvr.com/m/videos/", 1)
+}
+
 func TwoWebMediaSite(wg *models.ScrapeWG, updateSite bool, knownScenes []string, out chan<- models.ScrapedScene, singleSceneURL string, scraperID string, siteID string, URL string, limitScraping bool) error {
 	defer wg.Done()
 	logScrapeStart(scraperID, siteID)
@@ -33,6 +40,13 @@ func TwoWebMediaSite(wg *models.ScrapeWG, updateSite bool, knownScenes []string,
 		sc.Studio = "2WebMedia"
 		sc.Site = siteID
 		sc.HomepageURL = strings.Split(e.Request.URL.String(), "?")[0]
+
+		// Members URL (wankitnowvr only: zexyvr shares this handler but its
+		// members host is unverified, so leave it unset there rather than
+		// invent one (issue #1597).
+		if scraperID == "wankitnowvr" {
+			sc.MembersUrl = wankitnowMembersURL(sc.HomepageURL)
+		}
 
 		// SiteID, Scene ID - get from URL
 		tmp := strings.Split(sc.HomepageURL, "/")
