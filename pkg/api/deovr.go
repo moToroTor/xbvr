@@ -165,6 +165,12 @@ func isDeoAuthEnabled() bool {
 	}
 }
 
+// sanitizeDeoString strips invalid UTF-8 sequences so scene text holding stray
+// or unescaped characters can never break the DeoVR JSON encoding
+func sanitizeDeoString(s string) string {
+	return strings.ToValidUTF8(s, "")
+}
+
 func getProto(req *restful.Request) string {
 	// If XBVR is being run behind a reverse proxy, we will use the industry
 	// standard header X-Forwarded-Proto to set the correct protocol (HTTP or HTTPS)
@@ -306,8 +312,8 @@ func (i DeoVRResource) getDeoFile(req *restful.Request, resp *restful.Response) 
 	deoScene := DeoScene{
 		ID:          999900000 + file.ID,
 		Authorized:  1,
-		Description: file.Filename,
-		Title:       file.Filename,
+		Description: sanitizeDeoString(file.Filename),
+		Title:       sanitizeDeoString(file.Filename),
 		Date:        file.CreatedTime.Unix(),
 		IsFavorite:  false,
 		Is3D:        true,
@@ -503,30 +509,35 @@ func (i DeoVRResource) getDeoScene(req *restful.Request, resp *restful.Response)
 		hasAlpha = videoFiles[0].HasAlpha
 	}
 
-	title := scene.Title
+	title := sanitizeDeoString(scene.Title)
+	description := sanitizeDeoString(scene.Synopsis)
 
 	// Passthrough
-	var ckdata map[string]interface{}
-	//	nochromaKey := `{"enabled":false,"hasAlpha":false,"h":0,"opacity":0,"s":0,"threshold":0,"v":0}`
+	ckdata := make(map[string]interface{})
 	chromaKey := gjson.Parse(scene.ChromaKey)
-	_ = chromaKey
 	if gjson.Valid(scene.ChromaKey) {
-		if err := json.Unmarshal([]byte(scene.ChromaKey), &ckdata); err != nil {
-			fmt.Println("Error:", err)
+		if err := json.Unmarshal([]byte(scene.ChromaKey), &ckdata); err != nil || ckdata == nil {
+			// Stored JSON is not usable with encoding/json (e.g. it holds
+			// literal backslashes from double-escaping, which gjson tolerates
+			// but json.Unmarshal rejects, leaving a nil map behind). Fall back
+			// to empty instead of panicking and breaking the whole response.
+			log.Errorf("Invalid chromaKey JSON for scene %v: %v", scene.SceneID, err)
+			ckdata = make(map[string]interface{})
+			chromaKey = gjson.Parse(`{}`)
+		} else {
+			result := gjson.Get(scene.ChromaKey, "hasAlpha")
+			if !result.Exists() || ckdata["hasAlpha"] == "" {
+				// setting hasAlpha to false
+				ckdata["hasAlpha"] = "false"
+			}
+			// Convert back to JSON string
+			if ckup, err := json.Marshal(ckdata); err != nil {
+				log.Errorf("Failed to encode chromaKey JSON for scene %v: %v", scene.SceneID, err)
+				chromaKey = gjson.Parse(`{}`)
+			} else {
+				chromaKey = gjson.ParseBytes(ckup)
+			}
 		}
-		result := gjson.Get(scene.ChromaKey, "hasAlpha")
-		if !result.Exists() || ckdata["hasAlpha"] == "" {
-			//			if ckdata["."].(map[string]interface{})["hasAlpha"] = "false" || ckdata["."].(map[string]interface{})["hasAlpha"] = "" {
-
-			// setting hasAlpha to false
-			ckdata["hasAlpha"] = "false"
-		}
-		// Convert back to JSON string
-		ckup, err := json.Marshal(ckdata)
-		if err != nil {
-			fmt.Println("Error:", err)
-		}
-		chromaKey = gjson.ParseBytes(ckup)
 	} else if hasAlpha {
 		chromaKey = gjson.Parse(`{"enabled":true,"hasAlpha":true,"h":0,"opacity":0,"s":0,"threshold":0,"v":0}`)
 	}
@@ -541,7 +552,7 @@ func (i DeoVRResource) getDeoScene(req *restful.Request, resp *restful.Response)
 		ID:               scene.ID,
 		Authorized:       1,
 		Title:            title,
-		Description:      scene.Synopsis,
+		Description:      description,
 		Date:             finalDate,
 		Actors:           actors,
 		Paysite:          DeoScenePaysite{ID: 1, Name: scene.Site, Is3rdParty: true},
@@ -573,7 +584,7 @@ func (i DeoVRResource) getDeoScene(req *restful.Request, resp *restful.Response)
 			ID:               scene.ID,
 			Authorized:       1,
 			Title:            title,
-			Description:      scene.Synopsis,
+			Description:      description,
 			Date:             finalDate,
 			Actors:           actors,
 			Paysite:          DeoScenePaysite{ID: 1, Name: scene.Site, Is3rdParty: true},
@@ -668,7 +679,7 @@ func scenesToDeoList(req *restful.Request, scenes []models.SceneSummary) []DeoLi
 	list := make([]DeoListItem, 0)
 	for i := range scenes {
 		item := DeoListItem{
-			Title:        scenes[i].Title,
+			Title:        sanitizeDeoString(scenes[i].Title),
 			VideoLength:  scenes[i].Duration * 60,
 			ThumbnailURL: scenes[i].CoverURL,
 			VideoURL:     fmt.Sprintf("%v/deovr/%v", session.DeoRequestHost, scenes[i].ID),
@@ -694,7 +705,7 @@ func filesToDeoList(req *restful.Request, files []models.File) []DeoListItem {
 			}
 		}
 		item := DeoListItem{
-			Title:       files[i].Filename,
+			Title:       sanitizeDeoString(files[i].Filename),
 			VideoLength: uint(files[i].VideoDuration),
 			VideoURL:    fmt.Sprintf("%v/deovr/file/%v%v", session.DeoRequestHost, files[i].ID, dnt),
 		}
