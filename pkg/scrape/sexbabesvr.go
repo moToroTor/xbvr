@@ -15,6 +15,18 @@ import (
 	"github.com/xbapps/xbvr/pkg/models"
 )
 
+func sexBabesVRSceneIDFromURL(homepageURL string) string {
+	u, err := url.Parse(strings.Split(homepageURL, "?")[0])
+	if err != nil {
+		return ""
+	}
+	parts := strings.Split(strings.Trim(u.Path, "/"), "/")
+	if len(parts) == 0 {
+		return ""
+	}
+	return parts[len(parts)-1]
+}
+
 func SexBabesVR(wg *models.ScrapeWG, updateSite bool, knownScenes []string, out chan<- models.ScrapedScene, singleSceneURL string, singeScrapeAdditionalInfo string, limitScraping bool) error {
 	defer wg.Done()
 	scraperID := "sexbabesvr"
@@ -32,12 +44,20 @@ func SexBabesVR(wg *models.ScrapeWG, updateSite bool, knownScenes []string, out 
 		sc.Site = siteID
 		sc.HomepageURL = strings.Split(e.Request.URL.String(), "?")[0]
 
-		// Scene ID
+		// Scene ID — derive from the canonical scene URL slug so every
+		// scene gets a distinct ID. The dl8-video poster URL segment was
+		// constant across scenes, causing all upserts to collide on one row.
+		sc.SiteID = sexBabesVRSceneIDFromURL(sc.HomepageURL)
+		sc.SceneID = slugify.Slugify(sc.Site) + "-" + sc.SiteID
+
+		// Cover URL (poster ID kept only as a fallback SiteID)
 		e.ForEach(`dl8-video`, func(id int, e *colly.HTMLElement) {
-			posterURL := e.Request.AbsoluteURL(e.Attr("poster"))
-			tmp := strings.Split(posterURL, "/")
-			sc.SiteID = tmp[len(tmp)-2]
-			sc.SceneID = slugify.Slugify(sc.Site) + "-" + sc.SiteID
+			if sc.SiteID == "" {
+				posterURL := e.Request.AbsoluteURL(e.Attr("poster"))
+				tmp := strings.Split(posterURL, "/")
+				sc.SiteID = tmp[len(tmp)-2]
+				sc.SceneID = slugify.Slugify(sc.Site) + "-" + sc.SiteID
+			}
 			// Cover Url
 			sc.Covers = append(sc.Covers, strings.Replace(e.Attr("poster"), "/videoDetail2x", "", -1))
 		})
