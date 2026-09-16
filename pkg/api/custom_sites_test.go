@@ -11,8 +11,8 @@ import (
 
 func TestCustomAggregatorForURL(t *testing.T) {
 	cases := []struct {
-		url   string
-		want  string
+		url    string
+		want   string
 		wantOK bool
 	}{
 		{"https://www.sexlikereal.com/studios/foo", "slr", true},
