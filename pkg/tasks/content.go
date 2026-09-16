@@ -379,6 +379,39 @@ func Scrape(toScrape string, singleSceneURL string, singeScrapeAdditionalInfo st
 	}
 }
 
+// ParseJavCodes splits a pasted or uploaded code list (one per line, commas
+// or whitespace separated) into clean codes, dropping empties and dupes
+// (issue #398).
+func ParseJavCodes(input string) []string {
+	seen := make(map[string]bool)
+	var codes []string
+	for _, f := range strings.Fields(strings.ReplaceAll(input, ",", " ")) {
+		if f != "" && !seen[f] {
+			seen[f] = true
+			codes = append(codes, f)
+		}
+	}
+	return codes
+}
+
+// javBatchDelay spaces batch requests so rapid-fire lookups don't trip
+// IP-based blocking (issue #398).
+const javBatchDelay = 10 * time.Second
+
+// ScrapeJAVRBatch scrapes one scene per code, sequentially with a delay
+// between requests. Each ScrapeJAVR call takes and releases the scrape lock
+// itself, so sequential calls queue naturally.
+func ScrapeJAVRBatch(codes []string, scraper string) {
+	tlog := log.WithField("task", "scrape")
+	for i, code := range codes {
+		if i > 0 {
+			tlog.Infof("JAV batch: waiting %v before %s (%d/%d)", javBatchDelay, code, i+1, len(codes))
+			time.Sleep(javBatchDelay)
+		}
+		ScrapeJAVR(code, scraper)
+	}
+}
+
 func ScrapeJAVR(queryString string, scraper string) {
 	if !models.CheckLock("scrape") {
 		models.CreateLock("scrape")
