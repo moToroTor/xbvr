@@ -58,6 +58,10 @@
             <option value="script_published_desc">↓ {{ $t("Published Script Added") }}</option>
             <option value="scene_id_desc">↓ {{ $t("Scene Id") }}</option>
             <option value="site_asc">↑ {{ $t("Site") }}</option>
+            <option value="filename_asc">↑ {{ $t("Filename") }}</option>
+            <option value="filename_desc">↓ {{ $t("Filename") }}</option>
+            <option value="file_path_asc">↑ {{ $t("File path") }}</option>
+            <option value="file_path_desc">↓ {{ $t("File path") }}</option>
             <option value="alt_src_desc">↓ {{ $t("Linked to Alternate Sites") }}</option>
             <option value="random">↯ {{ $t("Random") }}</option>
           </select>
@@ -104,6 +108,28 @@
       </div>
       <div class="control">
         <button type="submit" class="button is-light" @click="clearVolume">
+          <b-icon pack="fas" icon="times" size="is-small"></b-icon>
+        </button>
+      </div>
+    </b-field>
+
+    <b-field label="Filename" label-position="on-border" :addons="true" class="field-extra">
+      <div class="control is-expanded">
+        <b-input v-model="filename"></b-input>
+      </div>
+      <div class="control">
+        <button type="submit" class="button is-light" @click="clearFilename">
+          <b-icon pack="fas" icon="times" size="is-small"></b-icon>
+        </button>
+      </div>
+    </b-field>
+
+    <b-field label="File path" label-position="on-border" :addons="true" class="field-extra">
+      <div class="control is-expanded">
+        <b-input v-model="file_path"></b-input>
+      </div>
+      <div class="control">
+        <button type="submit" class="button is-light" @click="clearFilePath">
           <b-icon pack="fas" icon="times" size="is-small"></b-icon>
         </button>
       </div>
@@ -362,6 +388,14 @@ export default {
       this.$store.dispatch('sceneList/filters')
       this.reloadList()
     },
+    clearFilename () {
+      this.$store.state.sceneList.filters.filename = ''
+      this.reloadList()
+    },
+    clearFilePath () {
+      this.$store.state.sceneList.filters.file_path = ''
+      this.reloadList()
+    },
     createAkaGroup () {
       this.$store.state.sceneList.isLoading = true
       ky.post('/api/aka/create', {json: {actorList: this.cast}}).json().then(data => {
@@ -611,6 +645,24 @@ export default {
       },
       set (value) {
         this.$store.state.sceneList.filters.volume = value
+        this.reloadList()
+      }
+    },
+    filename: {
+      get () {
+        return this.$store.state.sceneList.filters.filename
+      },
+      set (value) {
+        this.$store.state.sceneList.filters.filename = value
+        this.reloadList()
+      }
+    },
+    file_path: {
+      get () {
+        return this.$store.state.sceneList.filters.file_path
+      },
+      set (value) {
+        this.$store.state.sceneList.filters.file_path = value
         this.reloadList()
       }
     },

@@ -10,7 +10,8 @@ const state = {
     resolutions: [],
     framerates: [],
     bitrates: [],
-    filename: ''
+    filename: '',
+    path: ''
   }
 }
 

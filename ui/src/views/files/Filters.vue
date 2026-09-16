@@ -26,6 +26,15 @@
           </b-field>
         </div>
         <div class="column is-one-fifth">
+          <label class="label">{{$t("Path")}}</label>
+          <b-field>
+            <b-input v-model="filePath"></b-input>
+            <button class="button is-light" @click="clearFilePath">
+              <b-icon pack="fas" icon="times" size="is-small"></b-icon>
+            </button>
+          </b-field>
+        </div>
+        <div class="column is-one-fifth">
           <label class="label">{{$t("Created between")}}</label>
           <b-field>
             <b-datepicker v-model="fileCreation" editable range>
@@ -123,6 +132,9 @@ export default {
     clearFilename () {
       this.fileName = ''
     },
+    clearFilePath () {
+      this.filePath = ''
+    },
     clearRange () {
       this.fileCreation = []
     },
@@ -138,6 +150,17 @@ export default {
       },
       set (value) {
         this.$store.state.files.filters.filename = value
+        if (value.length > 3 || value.length == 0) {
+          this.$store.dispatch('files/load')
+        }
+      }
+    },
+    filePath: {
+      get () {
+        return this.$store.state.files.filters.path
+      },
+      set (value) {
+        this.$store.state.files.filters.path = value
         if (value.length > 3 || value.length == 0) {
           this.$store.dispatch('files/load')
         }
