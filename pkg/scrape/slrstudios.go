@@ -75,6 +75,21 @@ func slrScriptFlags(scripts gjson.Result) (human, ai bool) {
 	return human, ai
 }
 
+// slrLabelFallback returns the numeric scene ID to retry a failed label
+// lookup with, or "" when no retry applies: the ID must be all digits and
+// differ from the label (issue #1896).
+func slrLabelFallback(sceneID, sceneLabel string) string {
+	if sceneID == "" || sceneID == sceneLabel {
+		return ""
+	}
+	for _, r := range sceneID {
+		if r < '0' || r > '9' {
+			return ""
+		}
+	}
+	return sceneID
+}
+
 func SexLikeReal(wg *models.ScrapeWG, updateSite bool, knownScenes []string, out chan<- models.ScrapedScene, singleSceneURL string, scraperID string, siteID string, company string, siteURL string, singeScrapeAdditionalInfo string, limitScraping bool, masterSiteId string) error {
 	defer wg.Done()
 	logScrapeStart(scraperID, siteID)
@@ -133,6 +148,26 @@ func SexLikeReal(wg *models.ScrapeWG, updateSite bool, knownScenes []string, out
 			if err != nil {
 				log.Errorln("Failed to fetch API data for scene", sceneID, "with fallback:", err)
 				return
+			}
+		}
+
+		// Fallback to the numeric scene ID when a label lookup 404s. Pasted
+		// slugs can carry title emoticons (raw or percent-encoded) that never
+		// match the canonical API label, while the bare ID always resolves
+		// (verified live: .../51115 → 200, emoji label → 404; issue #1896).
+		if resp.StatusCode() != 200 {
+			if retry := slrLabelFallback(sceneID, sceneLabel); retry != "" {
+				log.Infoln("Retrying scene", sceneID, "with numeric ID fallback")
+				resp, err = client.R().
+					SetHeader("User-Agent", UserAgent).
+					SetHeader("Client-Type", "web").
+					SetHeader("project", projectHeader).
+					Get("https://api.sexlikereal.com/v3/scenes/" + retry)
+
+				if err != nil {
+					log.Errorln("Failed to fetch API data for scene", sceneID, "with ID fallback:", err)
+					return
+				}
 			}
 		}
 
