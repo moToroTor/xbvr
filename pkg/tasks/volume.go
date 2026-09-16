@@ -93,13 +93,6 @@ func RescanVolumes(id int) {
 				// stored entries may contain `*`/`?`, matched with filepath.Match
 				var wildcardScenes []models.Scene
 				db.Where("filenames_arr LIKE ? OR filenames_arr LIKE ?", "%*%", "%?%").Find(&wildcardScenes)
-				unescapedVariants := []string{
-					unescapedFilename,
-					strings.Replace(unescapedFilename, ".funscript", ".mp4", -1),
-					strings.Replace(unescapedFilename, ".hsp", ".mp4", -1),
-					strings.Replace(unescapedFilename, ".srt", ".mp4", -1),
-					strings.Replace(unescapedFilename, ".cmscript", ".mp4", -1),
-				}
 			outer:
 				for i := range wildcardScenes {
 					var patterns []string
@@ -111,12 +104,11 @@ func RescanVolumes(id int) {
 							continue
 						}
 						patBase := path.Base(pat)
-						for _, cand := range unescapedVariants {
+						// variants covers the raw basename, its HTML-escaped form
+						// and the sidecar extension swaps, i.e. both forms the
+						// pre-#1739 code matched separately
+						for _, cand := range variants {
 							if ok, _ := filepath.Match(patBase, cand); ok {
-								scenes = append(scenes, wildcardScenes[i])
-								continue outer
-							}
-							if ok, _ := filepath.Match(patBase, filename); ok {
 								scenes = append(scenes, wildcardScenes[i])
 								continue outer
 							}
