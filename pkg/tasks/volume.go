@@ -339,6 +339,12 @@ func scanLocalVolume(vol models.Volume, db *gorm.DB, tlog *logrus.Entry) {
 				}
 			}
 
+			// A manual projection override (xbapps/xbvr#1343) always wins over
+			// re-derivation so rescan preserves the user's choice.
+			if fl.ProjectionOverride != "" {
+				fl.VideoProjection = fl.ProjectionOverride
+			}
+
 			err = fl.Save()
 			if err != nil {
 				tlog.Errorf("New file %s, but got error %s", path, err)

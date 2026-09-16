@@ -27,6 +27,19 @@ type RequestUnmatchFile struct {
 	FileID uint `json:"file_id"`
 }
 
+type RequestSetFileProjection struct {
+	// Desired projection; empty string clears the manual override and
+	// returns the file to automatic derivation.
+	Projection string `json:"projection"`
+}
+
+// allowedFileProjections mirrors the values produced by filename/ffprobe
+// derivation (pkg/tasks/volume.go) and accepted by scene filters.
+var allowedFileProjections = []string{
+	"", "180_sbs", "180_mono", "360_tb", "360_mono",
+	"fisheye", "fisheye190", "mkx200", "mkx220", "rf52", "vrca220", "flat",
+}
+
 type RequestFileList struct {
 	State       optional.String   `json:"state"`
 	CreatedDate []optional.String `json:"createdDate"`
@@ -63,6 +76,10 @@ func (i FilesResource) WebService() *restful.WebService {
 		Writes(models.File{}))
 
 	ws.Route(ws.DELETE("/file/{file-id}").To(i.removeFile).
+		Metadata(restfulspec.KeyOpenAPITags, tags))
+
+	ws.Route(ws.PUT("/file/{file-id}/projection").To(i.setFileProjection).
+		Param(ws.PathParameter("file-id", "File ID").DataType("int")).
 		Metadata(restfulspec.KeyOpenAPITags, tags))
 
 	return ws
@@ -324,6 +341,50 @@ func (i FilesResource) unmatchFile(req *restful.Request, resp *restful.Response)
 	}
 
 	resp.WriteHeaderAndEntity(http.StatusOK, scene)
+}
+
+func (i FilesResource) setFileProjection(req *restful.Request, resp *restful.Response) {
+	fileID, err := strconv.Atoi(req.PathParameter("file-id"))
+	if err != nil {
+		log.Error(err)
+		return
+	}
+
+	var r RequestSetFileProjection
+	if err := req.ReadEntity(&r); err != nil {
+		log.Error(err)
+		return
+	}
+
+	allowed := false
+	for _, p := range allowedFileProjections {
+		if r.Projection == p {
+			allowed = true
+			break
+		}
+	}
+	if !allowed {
+		resp.WriteErrorString(http.StatusBadRequest, "unknown projection")
+		return
+	}
+
+	var f models.File
+	db, _ := models.GetDB()
+	defer db.Close()
+	if err := db.Where(&models.File{ID: uint(fileID)}).First(&f).Error; err != nil {
+		log.Error(err)
+		return
+	}
+
+	// The override is what rescan preserves; VideoProjection is what every
+	// consumer (heresphere, deovr, filters) already reads.
+	f.ProjectionOverride = r.Projection
+	if r.Projection != "" {
+		f.VideoProjection = r.Projection
+	}
+	f.Save()
+
+	resp.WriteHeaderAndEntity(http.StatusOK, f)
 }
 
 func (i FilesResource) removeFile(req *restful.Request, resp *restful.Response) {
