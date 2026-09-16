@@ -1,7 +1,6 @@
 package tasks
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -72,27 +71,27 @@ func RescanVolumes(id int) {
 		tlog.Infof("Matching Scenes to known filenames")
 		db.Model(&models.File{}).Where("files.scene_id = 0").Find(&files)
 
-		escape := func(s string) string {
-			var buffer bytes.Buffer
-			json.HTMLEscape(&buffer, []byte(s))
-			return buffer.String()
-		}
-
 		for i := range files {
 			unescapedFilename := path.Base(files[i].Filename)
-			filename := escape(unescapedFilename)
-			filename2 := strings.Replace(filename, ".funscript", ".mp4", -1)
-			filename3 := strings.Replace(filename, ".hsp", ".mp4", -1)
-			filename4 := strings.Replace(filename, ".srt", ".mp4", -1)
-			filename5 := strings.Replace(filename, ".cmscript", ".mp4", -1)
-			err := db.Where("filenames_arr LIKE ? OR filenames_arr LIKE ? OR filenames_arr LIKE ? OR filenames_arr LIKE ? OR filenames_arr LIKE ?", `%"`+filename+`"%`, `%"`+filename2+`"%`, `%"`+filename3+`"%`, `%"`+filename4+`"%`, `%"`+filename5+`"%`).Find(&scenes).Error
+			variants := filenameMatchVariants(unescapedFilename)
+			likeArgs := make([]interface{}, 0, len(variants))
+			likeConds := make([]string, 0, len(variants))
+			extArgs := make([]interface{}, 0, len(variants))
+			extConds := make([]string, 0, len(variants))
+			for _, v := range variants {
+				likeConds = append(likeConds, `filenames_arr LIKE ? ESCAPE '\'`)
+				likeArgs = append(likeArgs, `%"`+escapeLike(v)+`"%`)
+				extConds = append(extConds, `external_data LIKE ? ESCAPE '\'`)
+				extArgs = append(extArgs, `%"`+escapeLike(v)+`%`)
+			}
+			err := db.Where(strings.Join(likeConds, " OR "), likeArgs...).Find(&scenes).Error
 			if err != nil {
 				log.Error(err, " when matching "+unescapedFilename)
 			}
 			if len(scenes) == 0 && config.Config.Advanced.UseAltSrcInFileMatching {
 				// check if the filename matches in external_reference record
 
-				db.Preload("XbvrLinks").Where("external_source like 'alternate scene %' and external_data LIKE ? OR external_data LIKE ? OR external_data LIKE ? OR external_data LIKE ? OR external_data LIKE ?", `%"`+filename+`%`, `%"`+filename2+`%`, `%"`+filename3+`%`, `%"`+filename4+`%`, `%"`+filename5+`%`).Find(&extrefs)
+				db.Preload("XbvrLinks").Where("external_source like 'alternate scene %' and ("+strings.Join(extConds, " OR ")+")", extArgs...).Find(&extrefs)
 				if len(extrefs) == 1 {
 					if len(extrefs[0].XbvrLinks) == 1 {
 						// the scene id will be the Internal DB Id from the associated link
