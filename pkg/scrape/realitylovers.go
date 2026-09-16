@@ -18,13 +18,15 @@ func RealityLoversSite(wg *models.ScrapeWG, updateSite bool, knownScenes []strin
 	sceneCollector := createCollector(domain)
 	siteCollector := createCollector(domain)
 
-	// These cookies are needed for age verification.
+	// These cookies are needed for age verification. isAgeVerified is required
+	// by the current site before listing/scene pages render (otherwise only
+	// an age-verification wall is returned).
 	siteCollector.OnRequest(func(r *colly.Request) {
-		r.Headers.Set("Cookie", "agreedToDisclaimer=true")
+		r.Headers.Set("Cookie", "agreedToDisclaimer=true; isAgeVerified=true")
 	})
 
 	sceneCollector.OnRequest(func(r *colly.Request) {
-		r.Headers.Set("Cookie", "agreedToDisclaimer=true")
+		r.Headers.Set("Cookie", "agreedToDisclaimer=true; isAgeVerified=true")
 	})
 
 	sceneCollector.OnHTML(`html`, func(e *colly.HTMLElement) {
@@ -45,8 +47,10 @@ func RealityLoversSite(wg *models.ScrapeWG, updateSite bool, knownScenes []strin
 			sc.Gallery = append(sc.Gallery, e.ChildAttr("img", "src"))
 		})
 
-		// Incase we scrape a single scene use one of the gallery images for the cover
-		if singleSceneURL != "" {
+		// Incase we scrape a single scene use one of the gallery images for the cover.
+		// Guarded: wall/partial pages have no gallery and Gallery[0] panics,
+		// taking the whole process down (no recover in the scrape path).
+		if singleSceneURL != "" && len(sc.Gallery) > 0 {
 			sc.Covers = append(sc.Covers, sc.Gallery[0])
 		}
 
@@ -89,14 +93,44 @@ func RealityLoversSite(wg *models.ScrapeWG, updateSite bool, knownScenes []strin
 			sc.Title = strings.ReplaceAll(tmp[len(tmp)-1], "-", " ")
 		}
 
-		// Scene ID
+		// Scene ID (contentId shared by all versions of a scene)
 		sc.SiteID = tmp[len(tmp)-2]
 
 		if sc.SiteID != "" {
-			sc.SceneID = slugify.Slugify(sc.Site) + "-" + sc.SiteID
+			baseID := slugify.Slugify(sc.Site) + "-" + sc.SiteID
 
-			// save only if we got a SceneID
-			out <- sc
+			// RealityLovers hosts separate POV and Voyeur versions of the same
+			// content (issue #300). The scene page renders a POV/VOYEUR picker
+			// (input#POV + input#VOYEUR) only when both versions exist; each
+			// version has its own download URL (unique sceneId + perspective)
+			// while the contentId is shared. Emit one scene per version so both
+			// can be matched and downloaded independently. Pages with a single
+			// version keep the historic contentId-based SceneID.
+			perspectives := []string{}
+			if e.DOM.Find("input#POV").Length() > 0 {
+				perspectives = append(perspectives, "POV")
+			}
+			if e.DOM.Find("input#VOYEUR").Length() > 0 {
+				perspectives = append(perspectives, "VOYEUR")
+			}
+
+			if len(perspectives) > 1 {
+				for _, perspective := range perspectives {
+					variant := sc
+					variant.SceneID = baseID + "-" + strings.ToLower(perspective)
+					if perspective == "POV" {
+						variant.Title = sc.Title + " [POV]"
+					} else {
+						variant.Title = sc.Title + " [Voyeur]"
+					}
+					out <- variant
+				}
+			} else {
+				sc.SceneID = baseID
+
+				// save only if we got a SceneID
+				out <- sc
+			}
 		}
 	})
 
