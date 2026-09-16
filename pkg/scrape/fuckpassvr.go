@@ -24,7 +24,7 @@ func FuckPassVR(wg *models.ScrapeWG, updateSite bool, knownScenes []string, out 
 	siteID := "FuckPassVR"
 	logScrapeStart(scraperID, siteID)
 
-	sceneCollector := createCollector("www.fuckpassvr.com")
+	sceneCollector := allowURLRevisit(createCollector("www.fuckpassvr.com"))
 	siteCollector := createCollector("www.fuckpassvr.com")
 
 	client := resty.New()
@@ -33,6 +33,16 @@ func FuckPassVR(wg *models.ScrapeWG, updateSite bool, knownScenes []string, out 
 	warmBase := imgProxyBase()
 
 	sceneCollector.OnHTML(`html`, func(e *colly.HTMLElement) {
+		// Geo-gate guard (xbvr#2160): with rotating proxies some scene
+		// requests 302 to /sfw/. The scene collector allows revisits so
+		// the shared /sfw/ target can't poison visit dedup; skip the
+		// gate page here without emitting — the scene stays unknown and
+		// is retried on the next run.
+		if strings.HasPrefix(e.Request.URL.Path, "/sfw") {
+			log.Warnf("FuckPassVR: skipping /sfw/ geo-gate page at %s", e.Request.URL.String())
+			return
+		}
+
 		sc := models.ScrapedScene{}
 		sc.ScraperID = scraperID
 		sc.SceneType = "VR"
@@ -140,9 +150,18 @@ func FuckPassVR(wg *models.ScrapeWG, updateSite bool, knownScenes []string, out 
 		}
 	})
 
+	// Manual visit dedup for scene URLs: the scene collector allows revisits
+	// (see above), so guard here against visiting the same canonical scene
+	// URL twice within a run.
+	visitedScenes := make(map[string]struct{})
+
 	siteCollector.OnHTML(`div.videos__element a.videos__videoTitle`, func(e *colly.HTMLElement) {
 		sceneURL := e.Request.AbsoluteURL(e.Attr("href"))
+		if _, seen := visitedScenes[sceneURL]; seen {
+			return
+		}
 		if !funk.ContainsString(knownScenes, sceneURL) {
+			visitedScenes[sceneURL] = struct{}{}
 			sceneCollector.Visit(sceneURL)
 		}
 	})

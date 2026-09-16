@@ -84,6 +84,20 @@ func cloneCollector(c *colly.Collector) *colly.Collector {
 	return x
 }
 
+// allowURLRevisit opts a single collector out of Colly's URL-visit dedup.
+//
+// Colly records every redirect target in the shared visited set, so a
+// transient geo-gate redirect (e.g. a FuckPassVR scene 302 to /sfw/)
+// poisons dedup: the first redirect marks /sfw/ visited and every later
+// redirected scene fails with "already visited" (xbvr#2160). Callers that
+// opt out must dedup the canonical URLs they actually want themselves
+// (e.g. a local map). Default createCollector behaviour is unchanged for
+// all other scrapers.
+func allowURLRevisit(c *colly.Collector) *colly.Collector {
+	c.AllowURLRevisit = true
+	return c
+}
+
 func createCallbacks(c *colly.Collector) *colly.Collector {
 	const maxRetries = 15
 
