@@ -18,8 +18,11 @@ func NaughtyAmericaVR(wg *models.ScrapeWG, updateSite bool, knownScenes []string
 	siteID := "NaughtyAmerica VR"
 	logScrapeStart(scraperID, siteID)
 
-	sceneCollector := createCollector("www.naughtyamerica.com")
-	siteCollector := createCollector("www.naughtyamerica.com")
+	// naughtyamericavr.com is a live alias of naughtyamerica.com (both hosts
+	// serve identical content); without it a pasted vr-host URL dies with a
+	// silent ErrForbiddenDomain after the UI dispatches it here (issue #1979).
+	sceneCollector := createCollector("www.naughtyamerica.com", "naughtyamericavr.com", "www.naughtyamericavr.com")
+	siteCollector := createCollector("www.naughtyamerica.com", "naughtyamericavr.com", "www.naughtyamericavr.com")
 
 	sceneCollector.OnHTML(`html`, func(e *colly.HTMLElement) {
 		sc := models.ScrapedScene{}
