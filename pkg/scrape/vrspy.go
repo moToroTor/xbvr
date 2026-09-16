@@ -105,10 +105,13 @@ func VRSpy(wg *models.ScrapeWG, updateSite bool, knownScenes []string, out chan<
 
 		sc.SceneID = scraperID + "-" + sc.SiteID
 
-		// Title selector based on reference scrapers
-		title := e.ChildText(`h1.section-header-container`)
+		// Title scoped to the scene header. The section headings below the player
+		// (Photos, Related videos, Discussion) share the .section-header-container
+		// class, so an unscoped selector regresses into the nav-junk title
+		// reported in #1814.
+		title := e.ChildText(`div.video-title-container h1.section-header-container`)
 		if title == "" {
-			title = e.ChildText(`div.video-title .section-header-container`)
+			title = e.ChildText(`h1.section-header-container`)
 		}
 		// Title cleanup
 		title = strings.TrimSpace(title)
@@ -198,6 +201,36 @@ func VRSpy(wg *models.ScrapeWG, updateSite bool, knownScenes []string, out chan<
 				}
 			}
 		})
+
+		// Fallback for release date / duration from the JSON-LD VideoObject
+		// (issue #1814: detail items were missed after a site redesign).
+		if sc.Released == "" || sc.Duration == 0 {
+			e.ForEach(`script[type="application/ld+json"]`, func(_ int, s *colly.HTMLElement) {
+				var ld struct {
+					Type       string `json:"@type"`
+					UploadDate string `json:"uploadDate"`
+					Duration   string `json:"duration"`
+				}
+				if json.Unmarshal([]byte(s.Text), &ld) != nil || ld.Type != "VideoObject" {
+					return
+				}
+				if sc.Released == "" && ld.UploadDate != "" {
+					if t, err := time.Parse(time.RFC3339, ld.UploadDate); err == nil {
+						sc.Released = t.Format("2006-01-02")
+					} else if m := regexp.MustCompile(`^\d{4}-\d{2}-\d{2}`).FindString(ld.UploadDate); m != "" {
+						sc.Released = m
+					}
+				}
+				if sc.Duration == 0 && ld.Duration != "" {
+					if m := regexp.MustCompile(`^PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?$`).FindStringSubmatch(ld.Duration); m != nil {
+						h, _ := strconv.Atoi(m[1])
+						min, _ := strconv.Atoi(m[2])
+						sec, _ := strconv.Atoi(m[3])
+						sc.Duration = (h*3600 + min*60 + sec) / 60
+					}
+				}
+			})
+		}
 
 		// Set up CDN URL for covers and images (must copy, not alias e.Request.URL pointer)
 		cdnSceneURL := &url.URL{
