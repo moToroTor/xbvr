@@ -228,7 +228,7 @@ func scanLocalVolume(vol models.Volume, db *gorm.DB, tlog *logrus.Entry) {
 					var fl models.File
 					err = db.Where(&models.File{Path: filepath.Dir(path), Filename: filepath.Base(path)}).First(&fl).Error
 
-					if err == gorm.ErrRecordNotFound || fl.VolumeID == 0 || fl.VideoDuration == 0 || fl.VideoProjection == "" || fl.Size != f.Size() || fl.OsHash == "" {
+					if err == gorm.ErrRecordNotFound || fl.VolumeID == 0 || fl.VideoDuration == 0 || fl.VideoBitRate == 0 || fl.VideoProjection == "" || fl.Size != f.Size() || fl.OsHash == "" {
 						videoProcList = append(videoProcList, path)
 					}
 				}
@@ -299,18 +299,26 @@ func scanLocalVolume(vol models.Volume, db *gorm.DB, tlog *logrus.Entry) {
 				if vs == nil {
 					tlog.Error("No video stream in file ", path)
 				} else {
-					if vs.BitRate != "" {
-						bitRate, _ := strconv.Atoi(vs.BitRate)
-						fl.VideoBitRate = bitRate
-					}
 					fl.VideoAvgFrameRate = vs.AvgFrameRate
 					fl.VideoCodecName = vs.CodecName
 					fl.VideoWidth = vs.Width
 					fl.VideoHeight = vs.Height
-					if dur, err := strconv.ParseFloat(vs.Duration, 64); err == nil {
+					if dur, err := strconv.ParseFloat(vs.Duration, 64); err == nil && dur > 0 {
 						fl.VideoDuration = dur
-					} else if ffdata.Format.DurationSeconds > 0.0 {
+					} else if ffdata.Format != nil && ffdata.Format.DurationSeconds > 0.0 {
 						fl.VideoDuration = ffdata.Format.DurationSeconds
+					}
+					// ffprobe omits the stream-level bit_rate for some codecs (e.g. VP9
+					// in WebM), so fall back to the format-level bitrate and, as a last
+					// resort, derive it from file size and duration
+					if bitRate, err := strconv.Atoi(vs.BitRate); err == nil && bitRate > 0 {
+						fl.VideoBitRate = bitRate
+					} else if ffdata.Format != nil {
+						if formatBitRate, err := strconv.Atoi(ffdata.Format.BitRate); err == nil && formatBitRate > 0 {
+							fl.VideoBitRate = formatBitRate
+						} else if fl.VideoDuration > 0 && fl.Size > 0 {
+							fl.VideoBitRate = int(float64(fl.Size) * 8 / fl.VideoDuration)
+						}
 					}
 					fl.HasAlpha = false
 
