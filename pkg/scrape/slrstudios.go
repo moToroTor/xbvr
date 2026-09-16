@@ -59,6 +59,22 @@ func normalizeSLRSceneURL(u string) string {
 	return urlPrefix + "scenes/" + slug
 }
 
+// slrScriptFlags folds a v3 scripts array into human/ai presence flags.
+// Entries are keyed by scriptAI (true = AI script, anything else = human).
+// Used by both the new-scene and funscript-update paths so they cannot
+// disagree (issue #1414).
+func slrScriptFlags(scripts gjson.Result) (human, ai bool) {
+	scripts.ForEach(func(_, value gjson.Result) bool {
+		if value.Get("scriptAI").Bool() {
+			ai = true
+		} else {
+			human = true
+		}
+		return true
+	})
+	return human, ai
+}
+
 func SexLikeReal(wg *models.ScrapeWG, updateSite bool, knownScenes []string, out chan<- models.ScrapedScene, singleSceneURL string, scraperID string, siteID string, company string, siteURL string, singeScrapeAdditionalInfo string, limitScraping bool, masterSiteId string) error {
 	defer wg.Done()
 	logScrapeStart(scraperID, siteID)
@@ -425,16 +441,12 @@ func SexLikeReal(wg *models.ScrapeWG, updateSite bool, knownScenes []string, out
 				// V3 API has detailed scripts array
 				scripts := sceneData.Get("scripts")
 				if scripts.Exists() && scripts.IsArray() {
-					scripts.ForEach(func(key, value gjson.Result) bool {
+					human, ai := slrScriptFlags(scripts)
+					if human || ai {
 						sc.HasScriptDownload = true
-						isAi := value.Get("scriptAI").Bool()
-						if isAi {
-							sc.AiScript = true
-						} else {
-							sc.HumanScript = true
-						}
-						return true
-					})
+					}
+					sc.HumanScript = human
+					sc.AiScript = ai
 				}
 			}
 		}
@@ -595,21 +607,15 @@ func SexLikeReal(wg *models.ScrapeWG, updateSite bool, knownScenes []string, out
 					}
 
 					if existingScene.ID != 0 || masterSiteId != "" {
-						human := false
-						ai := false
-
-						// Check funscript data from API
-						fleshlight := scene.Get("fleshlight")
-						if fleshlight.Exists() && fleshlight.IsArray() {
-							fleshlight.ForEach(func(k, fs gjson.Result) bool {
-								isAi := fs.Get("isAiScript").Bool()
-								if isAi {
-									ai = true
-								} else {
-									human = true
-								}
-								return true
-							})
+						// Check funscript data from API. The v3 listing items
+						// carry the same scripts array as single scenes
+						// (entries keyed by scriptAI); there is no fleshlight
+						// array and no isAiScript key, so the old lookup always
+						// came back empty and the update below wiped both flags
+						// (issue #1414).
+						human, ai := false, false
+						if scripts := scene.Get("scripts"); scripts.Exists() && scripts.IsArray() {
+							human, ai = slrScriptFlags(scripts)
 						}
 
 						if existingScene.HumanScript != human || existingScene.AiScript != ai {
