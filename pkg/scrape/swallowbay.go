@@ -32,7 +32,11 @@ func SwallowBay(wg *models.ScrapeWG, updateSite bool, knownScenes []string, out 
 		sc.HomepageURL = e.Request.URL.String()
 
 		regexpSceneID := regexp.MustCompile(`\-(\d+)\.html$`)
-		sc.SiteID = regexpSceneID.FindStringSubmatch(e.Request.URL.Path)[1]
+		matches := regexpSceneID.FindStringSubmatch(e.Request.URL.Path)
+		if len(matches) < 2 {
+			return
+		}
+		sc.SiteID = matches[1]
 
 		// Title
 		e.ForEach(`div.content-title h1`, func(id int, e *colly.HTMLElement) {
