@@ -39,6 +39,11 @@ type File struct {
 	VideoProjection      string  `json:"projection" xbvrbackup:"projection"`
 	HasAlpha             bool    `json:"has_alpha" xbvrbackup:"has_alpha"`
 
+	// ProjectionOverride, when non-empty, is a manual projection set via the
+	// API/UI that wins over ffprobe/filename re-derivation on rescan
+	// (xbapps/xbvr#1343). Empty means fully automatic.
+	ProjectionOverride string `json:"projection_override" xbvrbackup:"projection_override"`
+
 	HasHeatmap          bool `json:"has_heatmap" xbvrbackup:"-"`
 	IsSelectedScript    bool `json:"is_selected_script" xbvrbackup:"is_selected_script"`
 	IsExported          bool `json:"is_exported" xbvrbackup:"-"`
