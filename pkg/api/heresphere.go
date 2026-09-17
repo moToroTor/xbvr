@@ -196,6 +196,50 @@ func (i HeresphereResource) WebService() *restful.WebService {
 	return ws
 }
 
+// heresphereProjection maps a file's VideoProjection to the projection set
+// Heresphere understands. Same mapping as the scene handler's switch, which
+// additionally tags features inline and is left as is.
+func heresphereProjection(videoProjection string) (projection string, stereo string, fov float64, lens string) {
+	projection = "equirectangular"
+	stereo = "sbs"
+	fov = 180.0
+	lens = "Linear"
+
+	switch videoProjection {
+	case "flat":
+		projection = "perspective"
+		stereo = "mono"
+	case "180_mono":
+		stereo = "mono"
+	case "360_mono":
+		projection = "equirectangular360"
+		stereo = "mono"
+	case "180_sbs":
+		// defaults already match
+	case "360_tb":
+		projection = "equirectangular360"
+		stereo = "tb"
+	case "mkx200":
+		projection = "fisheye"
+		fov = 200.0
+		lens = "MKX200"
+	case "mkx220":
+		projection = "fisheye"
+		fov = 220.0
+		lens = "MKX220"
+	case "vrca220":
+		projection = "fisheye"
+		fov = 220.0
+		lens = "VRCA220"
+	case "rf52", "fisheye190":
+		projection = "fisheye"
+		fov = 190.0
+	case "fisheye":
+		projection = "fisheye"
+	}
+	return projection, stereo, fov, lens
+}
+
 func (i HeresphereResource) getHeresphereFile(req *restful.Request, resp *restful.Response) {
 	if !config.Config.Interfaces.DeoVR.Enabled {
 		return
@@ -243,6 +287,8 @@ func (i HeresphereResource) getHeresphereFile(req *restful.Request, resp *restfu
 		},
 	})
 
+	projection, stereo, fov, lens := heresphereProjection(file.VideoProjection)
+
 	video := HeresphereVideo{
 		Access:               1,
 		Title:                file.Filename,
@@ -251,6 +297,10 @@ func (i HeresphereResource) getHeresphereFile(req *restful.Request, resp *restfu
 		DateReleased:         file.CreatedTime.Format("2006-01-02"),
 		DateAdded:            file.CreatedTime.Format("2006-01-02"),
 		DurationMilliseconds: uint(file.VideoDuration * 1000),
+		Projection:           projection,
+		Stereo:               stereo,
+		FOV:                  fov,
+		Lens:                 lens,
 		Media:                media,
 	}
 	if requestData.DeleteFiles != nil && config.Config.Interfaces.Heresphere.AllowFileDeletes {
