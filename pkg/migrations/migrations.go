@@ -847,6 +847,10 @@ func Migrate(migrateTo string) {
 				return tx.AutoMigrate(File{}).Error
 			},
 		},
+		{
+			ID:      "0089-file-projection-override",
+			Migrate: Migrate0089FileProjectionOverride,
+		},
 
 		// ===============================================================================================
 		// Put DB Schema migrations above this line and migrations that rely on the updated schema below
@@ -2654,4 +2658,15 @@ func MigrationRenameSceneId(tx *gorm.DB, scene models.Scene, newSceneID string, 
 		// add code for version 2
 	}
 	return nil
+}
+
+// Migrate0089FileProjectionOverride adds the files.projection_override
+// column backing models.File.ProjectionOverride (#1343). The field shipped
+// without this migration, so any File save on a pre-existing database failed
+// with "no such column" and could take the process down with it.
+func Migrate0089FileProjectionOverride(tx *gorm.DB) error {
+	type File struct {
+		ProjectionOverride string `json:"projection_override" xbvrbackup:"projection_override"`
+	}
+	return tx.AutoMigrate(File{}).Error
 }
