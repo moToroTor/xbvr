@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -380,6 +381,68 @@ func TestEnsureDbFailsLoudly(t *testing.T) {
 	}
 	if _, statErr := os.Stat(filepath.Join(pkgvar, ".env")); !os.IsNotExist(statErr) {
 		t.Error(".env written despite failed DB setup; want nothing")
+	}
+}
+
+// MariaDB root refused over TCP (passwordless wizard default) but reachable
+// over the local socket: postinst must use the socket instead of failing.
+// This is the DS1815+ failure on syno-v0.4.40-3: DSM injects the MariaDB-on
+// wizard defaults into CLI installs, TCP root demands a password, socket
+// root (unix_socket plugin) does not.
+func TestEnsureDbSocketFallback(t *testing.T) {
+	if _, err := exec.LookPath("sh"); err != nil {
+		t.Skip("sh not available")
+	}
+	pkgvar := t.TempDir()
+	dest := t.TempDir()
+
+	// Real unix socket so `[ -S ]` passes.
+	sockDir := t.TempDir()
+	sockPath := filepath.Join(sockDir, "mysqld.sock")
+	l, err := net.Listen("unix", sockPath)
+	if err != nil {
+		t.Skipf("cannot create unix socket: %v", err)
+	}
+	defer l.Close()
+
+	// Fake mysql: TCP (-h) always refused, socket (-S) works and logs.
+	capture := filepath.Join(t.TempDir(), "mysql.log")
+	fakebin := t.TempDir()
+	stub := "#!/bin/sh\nfor a in \"$@\"; do case \"$a\" in -h*) exit 1;; esac; done\n" +
+		"echo \"ARGS: $@\" >> \"" + capture + "\"\ncat >> \"" + capture + "\"\n"
+	if err := os.WriteFile(filepath.Join(fakebin, "mysql"), []byte(stub), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := runHook(t, pkgvar, dest, map[string]string{
+		"wizard_db_use":     "true",
+		"wizard_db_host":    "127.0.0.1",
+		"wizard_db_pass":    "",
+		"MYSQL_CLIENT":      filepath.Join(fakebin, "mysql"),
+		"MYSQL_SOCKET_GLOB": filepath.Join(sockDir, "*.sock"),
+		"PATH":              fakebin + ":/usr/bin:/bin",
+	}, "service_postinst"); err != nil {
+		t.Fatalf("postinst via socket failed: %v", err)
+	}
+	sql, err := os.ReadFile(capture)
+	if err != nil {
+		t.Fatalf("mysql client never ran over socket: %v", err)
+	}
+	for _, want := range []string{
+		"-S" + sockPath,
+		"CREATE DATABASE IF NOT EXISTS `xbvr`",
+		"CREATE USER IF NOT EXISTS 'xbvr'@'%'",
+	} {
+		if !strings.Contains(string(sql), want) {
+			t.Errorf("mysql socket call lacks %q:\n%s", want, sql)
+		}
+	}
+	raw, err := os.ReadFile(filepath.Join(pkgvar, ".env"))
+	if err != nil {
+		t.Fatalf(".env not written: %v", err)
+	}
+	if !strings.Contains(string(raw), "DATABASE_URL='mysql://xbvr:") {
+		t.Errorf(".env lacks mysql DATABASE_URL:\n%s", raw)
 	}
 }
 

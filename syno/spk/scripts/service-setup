@@ -98,6 +98,28 @@ mysql_client()
     command -v mysql 2>/dev/null
 }
 
+mysql_root()
+{
+    # Run mysql as root: TCP first (wizard host/port + root password),
+    # then any local mysqld socket. The socket matters on DSM: root
+    # usually logs in passwordless over it (unix_socket plugin) while
+    # TCP demands the password, so unattended installs carrying the
+    # MariaDB-on wizard defaults still work when the socket is there.
+    # MYSQL_SOCKET_GLOB overrides the search (tests).
+    # Globals set by ensure_db: client, dbhost, dbport, auth.
+    # shellcheck disable=SC2086
+    if "$client" -h"$dbhost" -P"$dbport" -uroot $auth "$@" >/dev/null 2>&1; then
+        return 0
+    fi
+    # shellcheck disable=SC2086
+    for sock in ${MYSQL_SOCKET_GLOB:-/run/mysqld/*.sock /var/run/mysqld/*.sock}; do
+        if [ -S "$sock" ] && "$client" -S"$sock" -uroot $auth "$@" >/dev/null 2>&1; then
+            return 0
+        fi
+    done
+    return 1
+}
+
 ensure_db()
 {
     # Idempotently create the database and user. No-op for sqlite.
@@ -121,9 +143,8 @@ ensure_db()
     if [ -n "${wizard_db_root_pass:-}" ]; then
         auth="-p${wizard_db_root_pass}"
     fi
-    # shellcheck disable=SC2086
-    if ! "$client" -h"$dbhost" -P"$dbport" -uroot $auth -e "SELECT 1" >/dev/null 2>&1; then
-        echo "cannot reach MariaDB at $dbhost:$dbport as root (wrong root password, or MariaDB10 not running?)" >&2
+    if ! mysql_root -e "SELECT 1"; then
+        echo "cannot reach MariaDB at $dbhost:$dbport as root (wrong root password, no socket access, or MariaDB10 not running?)" >&2
         return 1
     fi
     sql="CREATE DATABASE IF NOT EXISTS \`$dbname\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
@@ -132,8 +153,7 @@ ensure_db()
     sql="$sql GRANT ALL PRIVILEGES ON \`$dbname\`.* TO '$(sql_escape "$dbuser")'@'%';"
     sql="$sql GRANT ALL PRIVILEGES ON \`$dbname\`.* TO '$(sql_escape "$dbuser")'@'localhost';"
     sql="$sql FLUSH PRIVILEGES;"
-    # shellcheck disable=SC2086
-    if ! printf '%s' "$sql" | "$client" -h"$dbhost" -P"$dbport" -uroot $auth >/dev/null 2>&1; then
+    if ! printf '%s' "$sql" | mysql_root; then
         echo "failed to create database/user in MariaDB (see log)" >&2
         return 1
     fi
