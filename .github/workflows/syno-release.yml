@@ -27,11 +27,28 @@ jobs:
             extra_apt: gcc-aarch64-linux-gnu
     steps:
       - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: yarn
+          cache-dependency-path: yarn.lock
+
+      - name: Build frontend
+        run: |
+          corepack enable
+          corepack prepare yarn@1.22.22 --activate
+          yarn install --frozen-lockfile
+          yarn build
+          test -f ui/dist/index.html
+
       # XBVR needs CGO (sqlite json1) linked against glibc <= 2.26 or the
       # binary dies at startup on DSM 7.1 (glibc 2.26). debian stretch
       # ships glibc 2.24 and a gcc new enough for mattn/go-sqlite3.
       - name: Cross-compile binary (old glibc)
         run: |
+          mkdir -p syno/dist
           docker run --rm -v "$PWD":/src -w /src debian:stretch-slim bash -c "
             set -e
             sed -i 's/deb.debian.org/archive.debian.org/g; s/security.debian.org/archive.debian.org/g; /stretch-updates/d' /etc/apt/sources.list
