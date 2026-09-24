@@ -1,0 +1,53 @@
+#!/bin/sh
+# XBVR package installer (DSM 7 conventions, cf. spksrc installer.dsm7).
+# Dispatches preinst/postinst/preuninst/postuninst/preupgrade/postupgrade,
+# invoking service_* hooks from service-setup when present.
+
+SVC_SETUP=$(dirname "$0")"/service-setup"
+if [ -r "${SVC_SETUP}" ]; then
+    . "${SVC_SETUP}"
+fi
+
+call_func()
+{
+    FUNC="$1"
+    if type "${FUNC}" 2>/dev/null | grep -q 'function' 2>/dev/null; then
+        eval "${FUNC}"
+    else
+        # Absent hook counts as success; without this the caller's
+        # `exit $?` below would inherit grep's nonzero status.
+        return 0
+    fi
+}
+
+# Propagate hook status: a failing postinst/postupgrade must fail the
+# install loudly instead of hiding behind exit 0.
+case $1 in
+    preinst)
+        call_func "service_preinst"
+        exit $?
+        ;;
+    postinst)
+        call_func "service_postinst"
+        exit $?
+        ;;
+    preuninst)
+        call_func "service_preuninst"
+        exit $?
+        ;;
+    postuninst)
+        # Keep var/ (.env, main.db) on uninstall; DSM removes it only
+        # when the user ticks "remove data". Nothing to do here.
+        call_func "service_postuninst"
+        exit $?
+        ;;
+    preupgrade)
+        call_func "service_preupgrade"
+        exit $?
+        ;;
+    postupgrade)
+        call_func "service_postupgrade"
+        exit $?
+        ;;
+esac
+exit 1

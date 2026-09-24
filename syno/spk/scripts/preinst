@@ -1,0 +1,4 @@
+#!/bin/sh
+# Per-action entry point (DSM requires these files to exist;
+# without preupgrade/postupgrade installs fail with error 261).
+exec "$(dirname "$0")/installer" "preinst" "$@"

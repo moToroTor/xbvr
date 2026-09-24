@@ -1,0 +1,102 @@
+name: syno-release
+
+# Synology .spk for XBVR. Tag syno-v* in the fork; upstream version tags
+# are untouched.
+on:
+  push:
+    tags:
+      - "syno-v*"
+
+permissions:
+  contents: write
+  pages: write
+
+jobs:
+  spk:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - dsm_arch: avoton
+            goarch: amd64
+          - dsm_arch: aarch64
+            goarch: arm64
+    steps:
+      - uses: actions/checkout@v4
+      # XBVR needs CGO (sqlite json1) linked against glibc <= 2.26 or the
+      # binary dies at startup on DSM 7.1 (glibc 2.26). debian stretch
+      # ships glibc 2.24 and a gcc new enough for mattn/go-sqlite3.
+      - name: Cross-compile binary (old glibc)
+        run: |
+          docker run --rm -v "$PWD":/src -w /src debian:stretch-slim bash -c "
+            set -e
+            apt-get update -qq && apt-get install -y -qq gcc ca-certificates curl > /dev/null
+            curl -sL -o /tmp/go.tgz https://go.dev/dl/go1.25.0.linux-amd64.tar.gz
+            tar -xzf /tmp/go.tgz -C /usr/local
+            export PATH=/usr/local/go/bin:\$PATH GOFLAGS=-mod=mod
+            CGO_ENABLED=1 GOOS=linux GOARCH=${{ matrix.goarch }} go build -tags json1 -o /src/syno/dist/xbvr-linux-${{ matrix.goarch }} .
+          "
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: syno/go.mod
+      - name: Vet and test packager
+        run: cd syno && go vet ./... && go test ./...
+      - name: Assemble .spk
+        run: |
+          cd syno
+          go run ./tools/mkspk \
+            --binary dist/xbvr-linux-${{ matrix.goarch }} \
+            --arch ${{ matrix.dsm_arch }} \
+            --version ${GITHUB_REF_NAME#syno-v} \
+            --rev 1 --icon ../ui/public/icons/xbvr-256.png --out dist
+      - uses: actions/upload-artifact@v4
+        with:
+          name: spk-${{ matrix.dsm_arch }}
+          path: syno/dist/
+
+  publish:
+    needs: spk
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Extract per-arch icons for catalog links
+        run: |
+          for spk in dist/*.spk; do
+            base="${spk%.spk}"
+            tar -xf "$spk" -C dist PACKAGE_ICON.PNG PACKAGE_ICON_256.PNG
+            mv dist/PACKAGE_ICON.PNG "$base.icon_72.png"
+            mv dist/PACKAGE_ICON_256.PNG "$base.icon_256.png"
+          done
+          ls dist/
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: syno/go.mod
+      - name: Create GitHub Release with .spk assets
+        run: |
+          gh release create "${GITHUB_REF_NAME}" --title "${GITHUB_REF_NAME}" --notes "XBVR Synology package ${GITHUB_REF_NAME}" \
+            dist/*.spk dist/*.icon_72.png dist/*.icon_256.png
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Stage Pages download dir and generate catalog.json
+        run: |
+          mkdir -p pages/dl
+          cp dist/*.spk dist/*.icon_72.png dist/*.icon_256.png pages/dl/
+          cd syno
+          go run ./tools/mkcatalog \
+            --manifests '../dist/*.manifest.json' \
+            --assets "https://motorotor.github.io/xbvr/dl" \
+            --out ../pages/catalog.json
+          cd ..
+          mkdir -p pages/api
+          cp pages/catalog.json pages/api/package
+          cp pages/catalog.json pages/api/package.json
+      - name: Deploy catalog to GitHub Pages
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./pages
+          publish_branch: gh-pages

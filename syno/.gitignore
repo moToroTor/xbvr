@@ -1,0 +1,5 @@
+dist/
+*.spk
+*.manifest.json
+catalog.json
+pages/

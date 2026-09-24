@@ -1,0 +1,11 @@
+# XBVR package environment template. The install wizard writes the real
+# file to /var/packages/xbvr/var/.env; this documents every key.
+#
+# Absolute application dir (set to the package var dir at install).
+XBVR_APPDIR=/var/packages/xbvr/var
+# Web UI port.
+XBVR_WEB_PORT=9999
+# Database. Empty = built-in sqlite file in XBVR_APPDIR. MariaDB on DSM
+# listens on 3307 by default; create user/database first.
+# Example: DATABASE_URL='mysql://xbvr:s3cret@127.0.0.1:3307/xbvr'
+DATABASE_URL=
