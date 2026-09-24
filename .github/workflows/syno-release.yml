@@ -67,11 +67,14 @@ jobs:
       - name: Assemble .spk
         run: |
           cd syno
+          TAG="${GITHUB_REF_NAME#syno-v}"   # e.g. 0.4.40-2
+          VER="${TAG%-*}"                   # 0.4.40
+          REV="${TAG##*-}"                  # 2
           go run ./tools/mkspk \
             --binary dist/xbvr-linux-${{ matrix.goarch }} \
             --arch ${{ matrix.dsm_arch }} \
-            --version ${GITHUB_REF_NAME#syno-v} \
-            --rev 1 --icon ../ui/public/icons/xbvr-256.png --out dist
+            --version "$VER" \
+            --rev "$REV" --icon ../ui/public/icons/xbvr-256.png --out dist
       - uses: actions/upload-artifact@v4
         with:
           name: spk-${{ matrix.dsm_arch }}
