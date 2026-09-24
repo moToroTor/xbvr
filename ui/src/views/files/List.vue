@@ -41,13 +41,6 @@
               <span v-if="props.row.video_avgfps_val !== 0">{{ props.row.video_avgfps_val }}</span>
               <span v-else>-</span>
             </b-table-column>
-            <b-table-column field="projection" :label="$t('Projection')" style="white-space: nowrap;" v-slot="props">
-              <b-select v-if="props.row.type === 'video'" :value="props.row.projection_override || ''" @input="setProjection(props.row, $event)" size="is-small" :title="$t('Override projection (empty = auto)')">
-                <option value="">Auto ({{ props.row.projection || '-' }})</option>
-                <option v-for="p in projections" :key="p" :value="p">{{ p }}</option>
-              </b-select>
-              <span v-else>-</span>
-            </b-table-column>
             <b-table-column v-slot="props">
               <div class="block">
                 <b-button @click="play(props.row)" v-if="props.row.type === 'video'">{{ $t('Play') }}</b-button>
@@ -100,8 +93,7 @@ export default {
       format,
       parseISO,
       sortField: 'created_time',
-      sortOrder: 'desc',
-      projections: ['180_sbs', '180_mono', '360_tb', '360_mono', 'fisheye', 'fisheye190', 'mkx200', 'mkx220', 'rf52', 'vrca220', 'flat']
+      sortOrder: 'desc'
     }
   },
   computed: {
@@ -140,15 +132,6 @@ export default {
     },
     createScene (file) {
       this.$store.commit('overlay/createCustomScene', { file: file })
-    },
-    setProjection (file, projection) {
-      ky.put(`/api/files/file/${file.id}/projection`, {
-        json: {
-          projection: projection
-        }
-      }).then(data => {
-        this.$store.dispatch('files/load')
-      })
     },
     humanizeSeconds (seconds) {
       return new Date(seconds * 1000).toISOString().substr(11, 8)

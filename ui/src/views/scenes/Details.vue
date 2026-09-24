@@ -255,7 +255,11 @@
                           <span class="pathDetails">{{ f.path }}</span>
                           <br/>
                           {{ prettyBytes(f.size) }}<span v-if="f.type === 'video'"> ({{ prettyBytes(f.video_bitrate, { bits: true })  }}/s)</span>,
-                          <span v-if="f.type === 'video'"><span class="videosize">{{ f.video_width }}x{{ f.video_height }} {{ f.video_codec_name }}</span>, {{ f.projection }},&nbsp;</span>
+                          <span v-if="f.type === 'video'"><span class="videosize">{{ f.video_width }}x{{ f.video_height }} {{ f.video_codec_name }}</span>,
+                            <b-select :value="f.projection_override || ''" @input="setProjection(f, $event)" size="is-small" :title="$t('Override projection (empty = auto)')">
+                              <option value="">Auto ({{ f.projection || '-' }})</option>
+                              <option v-for="p in projections" :key="p" :value="p">{{ p }}</option>
+                            </b-select>,&nbsp;</span>
                           <span v-if="f.duration > 1">{{ humanizeSeconds(f.duration) }},</span>
                           {{ format(parseISO(f.created_time), "yyyy-MM-dd") }}
                         </small>
@@ -440,6 +444,7 @@ export default {
       lastSkipBackInterval: -5,
       currentCuepointId: 0,
       maxTime: new Date(0, 0, 0, 5, 0, 0),
+      projections: ['180_sbs', '180_mono', '360_tb', '360_mono', 'fisheye', 'fisheye190', 'mkx200', 'mkx220', 'rf52', 'vrca220', 'flat'],
       cuepointSorting: [{ field: "is_hsp", order: "asc" },{ field: "time_start", order: "desc" }, {field: "track", order: "desc"}, {field: "time_end", order: "desc"}],
       trackInput: '',
       track: null,
@@ -819,6 +824,16 @@ watch:{
       this.activeMedia = 1
       this.updatePlayer('/api/dms/file/' + file.id + '?dnt=true', (file.projection == 'flat' ? 'NONE' : '180'))
       this.player.play()
+    },
+    setProjection (file, projection) {
+      ky.put(`/api/files/file/${file.id}/projection`, {
+        json: {
+          projection: projection
+        }
+      }).json().then(data => {
+        file.projection_override = data.projection_override
+        file.projection = data.projection
+      })
     },
     unmatchFile (file) {
       this.$buefy.dialog.confirm({
