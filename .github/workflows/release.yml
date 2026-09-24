@@ -3,7 +3,9 @@ name: release
 on:
   push:
     tags:
-      - "*"
+      # Upstream version tags only: syno-v* tags are built by
+      # syno-release.yml (goreleaser chokes on them -> red runs).
+      - "v*"
 
 jobs:
 
