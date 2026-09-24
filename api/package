@@ -1,0 +1,60 @@
+{
+  "packages": [
+    {
+      "arch": "aarch64",
+      "changelog": "See https://github.com/moToroTor/xbvr/releases",
+      "desc": "XBVR media server: local VR library with metadata scraping.",
+      "distributor": "moToroTor",
+      "distributor_url": "https://github.com/moToroTor/xbvr",
+      "dname": "XBVR",
+      "link": "https://motorotor.github.io/xbvr/dl/xbvr_aarch64-7.1_0.4.40-2-1.spk",
+      "maintainer": "moToroTor",
+      "maintainer_url": "https://github.com/moToroTor/xbvr",
+      "md5": "258068c34894e1b15f4eaf6f5d2858a4",
+      "package": "xbvr",
+      "qinst": true,
+      "qstart": true,
+      "qupgrade": true,
+      "size": 37946368,
+      "snapshot": [],
+      "startable": "yes",
+      "thumbnail": [
+        "https://motorotor.github.io/xbvr/dl/xbvr_aarch64-7.1_0.4.40-2-1.icon_72.png",
+        "https://motorotor.github.io/xbvr/dl/xbvr_aarch64-7.1_0.4.40-2-1.icon_256.png"
+      ],
+      "thumbnail_retina": [
+        "https://motorotor.github.io/xbvr/dl/xbvr_aarch64-7.1_0.4.40-2-1.icon_256.png",
+        "https://motorotor.github.io/xbvr/dl/xbvr_aarch64-7.1_0.4.40-2-1.icon_256.png"
+      ],
+      "version": "0.4.40-2-1"
+    },
+    {
+      "arch": "avoton",
+      "changelog": "See https://github.com/moToroTor/xbvr/releases",
+      "desc": "XBVR media server: local VR library with metadata scraping.",
+      "distributor": "moToroTor",
+      "distributor_url": "https://github.com/moToroTor/xbvr",
+      "dname": "XBVR",
+      "link": "https://motorotor.github.io/xbvr/dl/xbvr_avoton-7.1_0.4.40-2-1.spk",
+      "maintainer": "moToroTor",
+      "maintainer_url": "https://github.com/moToroTor/xbvr",
+      "md5": "72f3f6a4d77a3205ffccd3fcb76c4785",
+      "package": "xbvr",
+      "qinst": true,
+      "qstart": true,
+      "qupgrade": true,
+      "size": 40539648,
+      "snapshot": [],
+      "startable": "yes",
+      "thumbnail": [
+        "https://motorotor.github.io/xbvr/dl/xbvr_avoton-7.1_0.4.40-2-1.icon_72.png",
+        "https://motorotor.github.io/xbvr/dl/xbvr_avoton-7.1_0.4.40-2-1.icon_256.png"
+      ],
+      "thumbnail_retina": [
+        "https://motorotor.github.io/xbvr/dl/xbvr_avoton-7.1_0.4.40-2-1.icon_256.png",
+        "https://motorotor.github.io/xbvr/dl/xbvr_avoton-7.1_0.4.40-2-1.icon_256.png"
+      ],
+      "version": "0.4.40-2-1"
+    }
+  ]
+}
