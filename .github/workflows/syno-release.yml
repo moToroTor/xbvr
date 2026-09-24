@@ -19,8 +19,12 @@ jobs:
         include:
           - dsm_arch: avoton
             goarch: amd64
+            cc: gcc
+            extra_apt: ""
           - dsm_arch: aarch64
             goarch: arm64
+            cc: aarch64-linux-gnu-gcc
+            extra_apt: gcc-aarch64-linux-gnu
     steps:
       - uses: actions/checkout@v4
       # XBVR needs CGO (sqlite json1) linked against glibc <= 2.26 or the
@@ -30,10 +34,12 @@ jobs:
         run: |
           docker run --rm -v "$PWD":/src -w /src debian:stretch-slim bash -c "
             set -e
-            apt-get update -qq && apt-get install -y -qq gcc ca-certificates curl > /dev/null
+            sed -i 's/deb.debian.org/archive.debian.org/g; s/security.debian.org/archive.debian.org/g; /stretch-updates/d' /etc/apt/sources.list
+            apt-get update -o Acquire::Check-Valid-Until=false -qq
+            apt-get install -y -qq gcc ca-certificates curl ${{ matrix.extra_apt }} > /dev/null
             curl -sL -o /tmp/go.tgz https://go.dev/dl/go1.25.0.linux-amd64.tar.gz
             tar -xzf /tmp/go.tgz -C /usr/local
-            export PATH=/usr/local/go/bin:\$PATH GOFLAGS=-mod=mod
+            export PATH=/usr/local/go/bin:\$PATH GOFLAGS=-mod=mod CC=${{ matrix.cc }}
             CGO_ENABLED=1 GOOS=linux GOARCH=${{ matrix.goarch }} go build -tags json1 -o /src/syno/dist/xbvr-linux-${{ matrix.goarch }} .
           "
       - uses: actions/setup-go@v5
