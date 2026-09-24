@@ -24,7 +24,9 @@ generators, no `adminurl`, plain-tar outer).
 
 Upgrades pre-fill every box from `.env` (the MariaDB URL is split back
 into parts) and `volumes.txt`. Reinstalls and wizard-less upgrades
-never overwrite `.env`.
+never overwrite `.env`. Install scripts run as root but the daemon runs
+as the service user, so postinst hands `.env`/`volumes.txt`/`bin/` to
+the var-dir owner — an unreadable `.env` aborts service start.
 
 ## ffmpeg: dependency + symlink, with fallback
 

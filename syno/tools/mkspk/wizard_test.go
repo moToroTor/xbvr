@@ -446,6 +446,51 @@ func TestEnsureDbSocketFallback(t *testing.T) {
 	}
 }
 
+// postinst hands its files to the var-dir owner: install scripts run as
+// root while the daemon runs as the service user, and an unreadable .env
+// aborts prestart (DS1815+ "Failed to run the package service").
+func TestPostinstClaimsVarFiles(t *testing.T) {
+	if _, err := exec.LookPath("sh"); err != nil {
+		t.Skip("sh not available")
+	}
+	pkgvar := t.TempDir()
+	dest := t.TempDir()
+
+	// Fake chown capturing its args (proves wiring without privileges).
+	capture := filepath.Join(t.TempDir(), "chown.log")
+	fakebin := t.TempDir()
+	stub := "#!/bin/sh\necho \"ARGS: $@\" >> \"" + capture + "\"\n"
+	if err := os.WriteFile(filepath.Join(fakebin, "chown"), []byte(stub), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := runHook(t, pkgvar, dest, map[string]string{
+		"wizard_db_use": "false",
+		"PATH":          fakebin + ":/usr/bin:/bin",
+	}, "service_postinst"); err != nil {
+		t.Fatalf("postinst failed: %v", err)
+	}
+	raw, err := os.ReadFile(capture)
+	if err != nil {
+		t.Fatalf("chown never ran: %v", err)
+	}
+	for _, want := range []string{
+		filepath.Join(pkgvar, ".env"),
+		filepath.Join(pkgvar, "bin"),
+	} {
+		if !strings.Contains(string(raw), want) {
+			t.Errorf("chown missing %q:\n%s", want, raw)
+		}
+	}
+	if strings.Contains(string(raw), "volumes.txt") {
+		t.Errorf("chown should skip absent volumes.txt:\n%s", raw)
+	}
+	st, _ := os.Stat(filepath.Join(pkgvar, ".env"))
+	if st.Mode().Perm() != 0o600 {
+		t.Errorf(".env mode = %o, want 600", st.Mode().Perm())
+	}
+}
+
 // Explicit sqlite opt-out keeps the fallback and skips MariaDB entirely.
 func TestExplicitSqliteSkipsMariaDB(t *testing.T) {
 	if _, err := exec.LookPath("sh"); err != nil {

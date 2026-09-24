@@ -178,6 +178,34 @@ link_ffbins()
     done
 }
 
+claim_var_files()
+{
+    # postinst runs as root but the daemon runs as the service user, and
+    # DSM owns the var dir by that user. Hand over the files postinst
+    # created (.env, volumes.txt, bin/) or the service cannot read its
+    # own config: a denied `. .env` aborts prestart and start fails.
+    # Owner/group come from the var dir itself (trailing /. dereferences
+    # the /var/packages symlink), so this tracks conf/privilege renames.
+    # Best effort: never fail the install here (a failure degrades to
+    # today's behavior and surfaces at start with the same symptom).
+    owner=$(ls -ld "${SYNOPKG_PKGVAR}/." 2>/dev/null | awk '{print $3}')
+    group=$(ls -ld "${SYNOPKG_PKGVAR}/." 2>/dev/null | awk '{print $4}')
+    if [ -z "$owner" ]; then
+        return 0
+    fi
+    if [ -n "$group" ]; then
+        spec="$owner:$group"
+    else
+        spec="$owner"
+    fi
+    for f in .env volumes.txt bin; do
+        if [ -e "${SYNOPKG_PKGVAR}/$f" ]; then
+            chown "$spec" "${SYNOPKG_PKGVAR}/$f" 2>/dev/null || \
+                echo "warning: cannot chown $f to $spec" >&2
+        fi
+    done
+}
+
 resolve_share()
 {
     # $1 = share name. Prints /volume*/<share> for the first volume that
@@ -246,6 +274,7 @@ service_postinst()
     # Fresh install only: never overwrite an existing .env.
     if [ -f "${SYNOPKG_PKGVAR}/.env" ]; then
         link_ffbins
+        claim_var_files
         return 0
     fi
     if db_use; then
@@ -253,7 +282,8 @@ service_postinst()
     fi
     write_dotenv || return 1
     link_ffbins
-    write_volumes_reminder
+    write_volumes_reminder || return 1
+    claim_var_files
 }
 
 service_postupgrade()
@@ -267,11 +297,13 @@ service_postupgrade()
         fi
         write_dotenv || return 1
         link_ffbins
-        write_volumes_reminder
+        write_volumes_reminder || return 1
+        claim_var_files
         return 0
     fi
     if [ -z "${wizard_port:-}" ] && [ -z "${wizard_db_use:-}" ] && [ -z "${wizard_video_share:-}" ] && [ -z "${wizard_video_subdirs:-}" ]; then
         link_ffbins
+        claim_var_files
         return 0
     fi
     if db_use; then
@@ -279,7 +311,8 @@ service_postupgrade()
     fi
     write_dotenv || return 1
     link_ffbins
-    write_volumes_reminder
+    write_volumes_reminder || return 1
+    claim_var_files
 }
 
 service_prestart()
