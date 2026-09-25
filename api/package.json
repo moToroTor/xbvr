@@ -7,26 +7,26 @@
       "distributor": "moToroTor",
       "distributor_url": "https://github.com/moToroTor/xbvr",
       "dname": "XBVR",
-      "link": "https://motorotor.github.io/xbvr/dl/xbvr_aarch64-7.1_0.4.40-8.spk",
+      "link": "https://motorotor.github.io/xbvr/dl/xbvr_aarch64-7.1_0.4.40-9.spk",
       "maintainer": "moToroTor",
       "maintainer_url": "https://github.com/moToroTor/xbvr",
-      "md5": "ba72fc802e7acd183ecc4247a8768119",
+      "md5": "655ac06d7171f159e67138dff7207a96",
       "package": "xbvr",
       "qinst": true,
       "qstart": true,
       "qupgrade": true,
-      "size": 37950976,
+      "size": 37956608,
       "snapshot": [],
       "startable": "yes",
       "thumbnail": [
-        "https://motorotor.github.io/xbvr/dl/xbvr_aarch64-7.1_0.4.40-8.icon_72.png",
-        "https://motorotor.github.io/xbvr/dl/xbvr_aarch64-7.1_0.4.40-8.icon_256.png"
+        "https://motorotor.github.io/xbvr/dl/xbvr_aarch64-7.1_0.4.40-9.icon_72.png",
+        "https://motorotor.github.io/xbvr/dl/xbvr_aarch64-7.1_0.4.40-9.icon_256.png"
       ],
       "thumbnail_retina": [
-        "https://motorotor.github.io/xbvr/dl/xbvr_aarch64-7.1_0.4.40-8.icon_256.png",
-        "https://motorotor.github.io/xbvr/dl/xbvr_aarch64-7.1_0.4.40-8.icon_256.png"
+        "https://motorotor.github.io/xbvr/dl/xbvr_aarch64-7.1_0.4.40-9.icon_256.png",
+        "https://motorotor.github.io/xbvr/dl/xbvr_aarch64-7.1_0.4.40-9.icon_256.png"
       ],
-      "version": "0.4.40-8"
+      "version": "0.4.40-9"
     },
     {
       "arch": "avoton",
@@ -35,26 +35,26 @@
       "distributor": "moToroTor",
       "distributor_url": "https://github.com/moToroTor/xbvr",
       "dname": "XBVR",
-      "link": "https://motorotor.github.io/xbvr/dl/xbvr_avoton-7.1_0.4.40-8.spk",
+      "link": "https://motorotor.github.io/xbvr/dl/xbvr_avoton-7.1_0.4.40-9.spk",
       "maintainer": "moToroTor",
       "maintainer_url": "https://github.com/moToroTor/xbvr",
-      "md5": "98245b2d40f5649a9430cab7eea108c0",
+      "md5": "573469aa7a8b635f5f06020569ab6642",
       "package": "xbvr",
       "qinst": true,
       "qstart": true,
       "qupgrade": true,
-      "size": 40545792,
+      "size": 40549376,
       "snapshot": [],
       "startable": "yes",
       "thumbnail": [
-        "https://motorotor.github.io/xbvr/dl/xbvr_avoton-7.1_0.4.40-8.icon_72.png",
-        "https://motorotor.github.io/xbvr/dl/xbvr_avoton-7.1_0.4.40-8.icon_256.png"
+        "https://motorotor.github.io/xbvr/dl/xbvr_avoton-7.1_0.4.40-9.icon_72.png",
+        "https://motorotor.github.io/xbvr/dl/xbvr_avoton-7.1_0.4.40-9.icon_256.png"
       ],
       "thumbnail_retina": [
-        "https://motorotor.github.io/xbvr/dl/xbvr_avoton-7.1_0.4.40-8.icon_256.png",
-        "https://motorotor.github.io/xbvr/dl/xbvr_avoton-7.1_0.4.40-8.icon_256.png"
+        "https://motorotor.github.io/xbvr/dl/xbvr_avoton-7.1_0.4.40-9.icon_256.png",
+        "https://motorotor.github.io/xbvr/dl/xbvr_avoton-7.1_0.4.40-9.icon_256.png"
       ],
-      "version": "0.4.40-8"
+      "version": "0.4.40-9"
     }
   ]
 }
