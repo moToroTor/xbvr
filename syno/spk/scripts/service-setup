@@ -9,6 +9,10 @@ SVC_BACKGROUND=y
 SVC_WRITE_PID=y
 PID_FILE="${SYNOPKG_PKGVAR}/xbvr.pid"
 LOG_FILE="${SYNOPKG_PKGVAR}/xbvr.log"
+# Separate stderr capture: the daemon already appends its own stdout to
+# LOG_FILE (logrus MultiWriter), so redirecting stdout there again would
+# duplicate every line. Stderr still needs a home for Go panics.
+ERR_FILE="${SYNOPKG_PKGVAR}/xbvr.err.log"
 
 # Run with the var dir as cwd: .env, main.db (sqlite fallback), bin/ and
 # volumes.txt live there.

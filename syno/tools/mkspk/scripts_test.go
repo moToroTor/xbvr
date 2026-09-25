@@ -117,3 +117,48 @@ func TestInstallerPropagatesFailure(t *testing.T) {
 		t.Error("postinst with unwritable PKGVAR succeeded; want failure")
 	}
 }
+
+// The daemon appends its own stdout to xbvr.log (logrus MultiWriter),
+// so start must NOT redirect stdout there too (every line doubled).
+// Stderr still needs a home for Go panics: xbvr.err.log.
+func TestDaemonStreamsSplit(t *testing.T) {
+	if _, err := exec.LookPath("sh"); err != nil {
+		t.Skip("sh not available")
+	}
+	pkgvar := t.TempDir()
+	dest := t.TempDir()
+	daemon := "#!/bin/sh\necho daemon-out-line\necho daemon-err-line >&2\n"
+	if err := os.MkdirAll(filepath.Join(dest, "bin"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dest, "bin", "xbvr"), []byte(daemon), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command("sh", "./start-stop-status", "start")
+	cmd.Dir = filepath.Join(spkDir(t), "scripts")
+	cmd.Env = []string{
+		"SYNOPKG_PKGDEST=" + dest, "SYNOPKG_PKGVAR=" + pkgvar,
+		"PATH=/usr/bin:/bin",
+	}
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("start failed: %v\n%s", err, out)
+	}
+	deadline := 50
+	for {
+		raw, _ := os.ReadFile(filepath.Join(pkgvar, "xbvr.err.log"))
+		if strings.Contains(string(raw), "daemon-err-line") {
+			break
+		}
+		deadline--
+		if deadline == 0 {
+			t.Fatal("daemon stderr never reached xbvr.err.log")
+		}
+		exec.Command("sleep", "0.1").Run()
+	}
+	if body, _ := os.ReadFile(filepath.Join(pkgvar, "xbvr.log")); strings.Contains(string(body), "daemon-out-line") {
+		t.Error("daemon stdout reached xbvr.log; want stdout dropped (daemon logs there itself)")
+	}
+	if _, err := os.Stat(filepath.Join(pkgvar, "xbvr.pid")); err != nil {
+		t.Errorf("pid file not written: %v", err)
+	}
+}

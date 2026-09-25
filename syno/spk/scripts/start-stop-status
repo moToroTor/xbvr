@@ -59,7 +59,7 @@ start_daemon()
         cd "${SVC_CWD}" || { echo "Failed to cd to ${SVC_CWD}" >> "${LOG_FILE}"; exit 1; }
     fi
     echo "Starting ${DNAME} ..." >> "${LOG_FILE}"
-    ${SERVICE_COMMAND} >> "${LOG_FILE}" 2>&1 &
+    ${SERVICE_COMMAND} >/dev/null 2>>"${ERR_FILE}" &
     if [ -n "${SVC_WRITE_PID}" ] && [ -n "${PID_FILE}" ]; then
         printf "%s" "$!" > "${PID_FILE}"
     else
