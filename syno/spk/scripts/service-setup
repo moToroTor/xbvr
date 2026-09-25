@@ -206,52 +206,97 @@ resolve_share()
     return 1
 }
 
+volume_dirs()
+{
+    # Prints the resolved video directories, one per line (nothing when
+    # the wizard named none). The share box takes a bare share name
+    # (resolved under /volume*), but also tolerates a full path and
+    # padding whitespace instead of failing the install over it.
+    # Absolute subdir entries are used as-is.
+    subdirs="${wizard_video_subdirs:-}"
+    share=$(printf '%s' "${wizard_video_share:-}" | sed -e 's/^ *//' -e 's/ *$//')
+    if [ -n "$share" ]; then
+        if [ "$share" != "${share#/}" ]; then
+            if [ -d "$share" ]; then
+                base="$share"
+            else
+                return 1
+            fi
+        else
+            base=$(resolve_share "$share") || return 1
+        fi
+        if [ -z "$subdirs" ]; then
+            printf '%s\n' "$base"
+            return 0
+        fi
+    elif [ -z "$subdirs" ]; then
+        return 0
+    fi
+    # Trailing newline: without it read(1) exits false on the
+    # last fragment and while drops the final directory.
+    printf '%s\n' "$subdirs" | tr ',' '\n' | while IFS= read -r d; do
+        d=$(printf '%s' "$d" | sed -e 's/^ *//' -e 's/ *$//')
+        if [ -z "$d" ]; then
+            continue
+        fi
+        # Absolute if stripping a leading / changes it (no case
+        # here: some shells misparse case inside $( )).
+        if [ -n "${wizard_video_share:-}" ]; then
+            if [ "$d" != "${d#/}" ]; then
+                printf '%s\n' "$d"
+            else
+                printf '%s\n' "$base/$d"
+            fi
+        else
+            printf '%s\n' "$d"
+        fi
+    done
+}
+
 write_volumes_reminder()
 {
     # Volumes themselves are DB rows added in the XBVR UI
     # (Settings -> Storage); the wizard can only collect the paths.
     # Persist them as a reminder the user works through once.
-    # Share ACLs cannot be granted from a wizard (DSM needs the manual
-    # File Station step documented on the wizard's Permissions page).
+    # Read access itself is granted by grant_video_access, not here.
     if [ -f "${SYNOPKG_PKGVAR}/volumes.txt" ]; then
         return 0
     fi
-    subdirs="${wizard_video_subdirs:-}"
-    if [ -n "${wizard_video_share:-}" ]; then
-        base=$(resolve_share "${wizard_video_share}") || {
-            echo "share '${wizard_video_share}' not found under /volume*" >&2
-            return 1
-        }
-        if [ -z "$subdirs" ]; then
-            subdirs="$base"
-        else
-            # Trailing newline: without it read(1) exits false on the
-            # last fragment and while drops the final directory.
-            subdirs=$(printf '%s\n' "$subdirs" | tr ',' '\n' | while IFS= read -r d; do
-                d=$(printf '%s' "$d" | sed -e 's/^ *//' -e 's/ *$//')
-                if [ -z "$d" ]; then
-                    continue
-                fi
-                # Absolute if stripping a leading / changes it (no case
-                # here: some shells misparse case inside $( )).
-                if [ "$d" != "${d#/}" ]; then
-                    printf '%s\n' "$d"
-                else
-                    printf '%s\n' "$base/$d"
-                fi
-            done | paste -sd ',' -)
-        fi
-    elif [ -z "$subdirs" ]; then
+    dirs=$(volume_dirs) || {
+        echo "share '${wizard_video_share}' not found (use a share name or an existing absolute path)" >&2
+        return 1
+    }
+    if [ -z "$dirs" ]; then
         return 0
     fi
     {
         echo "# Add each path below as a local Volume in the XBVR UI"
         echo "# (Settings -> Storage), then delete this reminder."
-        printf '%s\n' "$subdirs" | tr ',' '\n' | while IFS= read -r d; do
-            d=$(printf '%s' "$d" | sed -e 's/^ *//' -e 's/ *$//')
-            [ -n "$d" ] && echo "$d"
-        done
+        printf '%s\n' "$dirs"
     } > "${SYNOPKG_PKGVAR}/volumes.txt"
+}
+
+grant_video_access()
+{
+    # Grant the service user DSM read access on each resolved video dir:
+    # user:<owner>:allow:r-x---a-R-c--:fd--, the exact ACE File Station
+    # writes for "Read". Skips dirs that already grant the owner anything
+    # (a manual fuller grant stays). Best effort: warns, never fails.
+    owner=$(ls -ld "${SYNOPKG_PKGVAR}/." 2>/dev/null | awk '{print $3}')
+    if [ -z "$owner" ]; then
+        return 0
+    fi
+    command -v synoacltool >/dev/null 2>&1 || return 0
+    volume_dirs 2>/dev/null | while IFS= read -r d; do
+        if [ ! -d "$d" ]; then
+            continue
+        fi
+        if synoacltool -get "$d" 2>/dev/null | grep -q "user:${owner}:allow"; then
+            continue
+        fi
+        synoacltool -add "$d" "user:${owner}:allow:r-x---a-R-c--:fd--" 2>/dev/null || \
+            echo "warning: cannot grant $owner read on $d (use File Station)" >&2
+    done
 }
 
 service_postinst()
@@ -259,6 +304,7 @@ service_postinst()
     # Fresh install only: never overwrite an existing .env.
     if [ -f "${SYNOPKG_PKGVAR}/.env" ]; then
         claim_var_files
+        grant_video_access
         return 0
     fi
     if db_use; then
@@ -267,6 +313,7 @@ service_postinst()
     write_dotenv || return 1
     write_volumes_reminder || return 1
     claim_var_files
+    grant_video_access
 }
 
 service_postupgrade()
@@ -281,10 +328,12 @@ service_postupgrade()
         write_dotenv || return 1
         write_volumes_reminder || return 1
         claim_var_files
+        grant_video_access
         return 0
     fi
     if [ -z "${wizard_port:-}" ] && [ -z "${wizard_db_use:-}" ] && [ -z "${wizard_video_share:-}" ] && [ -z "${wizard_video_subdirs:-}" ]; then
         claim_var_files
+        grant_video_access
         return 0
     fi
     if db_use; then
@@ -293,6 +342,7 @@ service_postupgrade()
     write_dotenv || return 1
     write_volumes_reminder || return 1
     claim_var_files
+    grant_video_access
 }
 
 service_prestart()

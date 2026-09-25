@@ -39,7 +39,7 @@ PAGE_SERVER='{
         }]
     }, {
         "type": "textfield",
-        "desc": "Shared folder holding your videos (the share name, e.g. porn). The service user needs Read access on it: Control Panel, Shared Folder, Edit, Permissions.",
+        "desc": "Shared folder holding your videos (the share name, e.g. porn — a full path also works). The service user needs Read access on it: Control Panel, Shared Folder, Edit, Permissions.",
         "subitems": [{
             "key": "wizard_video_share",
             "desc": "Video share name (optional)",
@@ -120,7 +120,7 @@ PAGE_DB='{
 PAGE_PERMS='{
     "step_title": "DSM Permissions",
     "items": [{
-        "desc": "The package runs as its own service user. Give that user read access to every shared folder holding videos: Control Panel, Shared Folder, select the folder, Edit, Permissions, set the xbvr service user to Read. The installer cannot grant this itself. Please read <a target=\"_blank\" href=\"https://docs.synocommunity.com/user-guide/permissions/\">Permission Management</a> for details."
+        "desc": "The package runs as its own service user. The installer grants it read access on the folders above automatically; if a folder stays unreadable, set it manually: Control Panel, Shared Folder, select the folder, Edit, Permissions, set the xbvr service user to Read. Please read <a target=\"_blank\" href=\"https://docs.synocommunity.com/user-guide/permissions/\">Permission Management</a> for details."
     }]
 }'
 

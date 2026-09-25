@@ -18,9 +18,10 @@ generators, no `adminurl`, plain-tar outer).
   and user idempotently** (`IF NOT EXISTS`, utf8mb4) and fails loudly
   when MariaDB is unreachable. The root password is used once and
   **never stored**.
-- **DSM Permissions:** the package runs as `sc-xbvr`; grant it Read on
-  every video share in Control Panel → Shared Folder. A wizard cannot
-  grant share ACLs itself — this manual step stays.
+- **DSM Permissions:** the package runs as `sc-xbvr`; postinst grants
+  it Read on the wizard video folders automatically (the exact File
+  Station ACE). If a folder stays unreadable, grant it manually in
+  Control Panel → Shared Folder.
 
 Upgrades pre-fill every box from `.env` (the MariaDB URL is split back
 into parts) and `volumes.txt`. Reinstalls and wizard-less upgrades
@@ -36,6 +37,51 @@ XBVR self-downloads its static 4.2.1 `ffprobe`/`ffmpeg` pair into
 the SynoCommunity ffmpeg6 build fails the exact same 8 genuinely broken
 files — no demuxer advantage found, so the extra machinery (and the
 hard dep that blocked installs) was removed.
+
+## Troubleshooting (field notes)
+
+All commands as root on the NAS unless noted. Package paths: live dir
+`/var/packages/xbvr/var/` is a symlink to `/volume2/@appdata/xbvr` —
+`chown`/`chmod` the real path (bare `-R` on the symlink goes nowhere).
+
+- **Install fails, error 268 (dependent packages):** historical (a hard
+  ffmpeg dep, since removed). No hard deps are declared anymore.
+- **Install fails at postinstall (error 276):** the wizard defaults
+  MariaDB on with an empty root password. `ensure_db` tries TCP
+  (`host:port` + root password) then the local mysqld socket
+  (passwordless `unix_socket` root). If both refuse, install fails
+  loudly — supply the real root password via the GUI wizard.
+- **Package shows `broken`:** `synopkg uninstall xbvr` (keeps `var/`
+  unless data removal is ticked), then reinstall.
+- **Start fails ("Failed to run the package service"):** postinst runs
+  as root, the daemon as `sc-xbvr`. If `.env`/`bin/` are root-owned,
+  prestart dies sourcing `.env`. postinst hands them to the var-dir
+  owner on every path; manual repair:
+  `chown -R sc-xbvr:synocommunity /volume2/@appdata/xbvr`.
+- **Every log line twice:** fixed (daemon stdout to `/dev/null`,
+  stderr to `var/xbvr.err.log` for Go panics). Pre-fix logs just look
+  noisy; panics were always single (stderr-only).
+- **Adding a folder panics (pre-fix) / 400s:** the daemon user needs
+  read+traverse on the video path. postinst grants it automatically;
+  verify with
+  `su -s /bin/sh sc-xbvr -c 'ls -ld /volume2/<share>/...'`, else grant
+  `sc-xbvr` Read on the share (Control Panel → Shared Folder).
+- **`database is locked`:** check for two daemons
+  (`ps aux | grep -i xbvr`) — one is correct. A crashed run can also
+  leave a stale `lock-*` row (fatal exits skip defers), after which
+  every job silently no-ops:
+  `sqlite3 /var/packages/xbvr/var/main.db "PRAGMA busy_timeout=5000; select * from kvs where key like 'lock%';"`
+  Stop the package before deleting stale rows.
+- **Change settings after install:** reinstall the same version over
+  the top — the upgrade wizard pre-fills every value from `.env`.
+  (DSM-native config dialogs like MariaDB10's are first-party only;
+  third-party `.spk`s cannot ship one.)
+- **sqlite vs MariaDB:** sqlite is the default and fine into the GBs
+  for this workload. MariaDB helps only with real write contention
+  (rising `database is locked` fatals), never with job scheduling —
+  scrape/rescan/index run under single-holder KV locks on any engine.
+  Watch the ports: DSM's system MariaDB is 3306, the MariaDB10 package
+  defaults to 3307; point the wizard at whichever answers.
 
 ## Building & distribution
 

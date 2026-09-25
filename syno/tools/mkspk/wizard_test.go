@@ -5,6 +5,7 @@ import (
 	"net"
 	"os"
 	"os/exec"
+	"os/user"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -476,6 +477,125 @@ func TestPostinstClaimsVarFiles(t *testing.T) {
 	st, _ := os.Stat(filepath.Join(pkgvar, ".env"))
 	if st.Mode().Perm() != 0o600 {
 		t.Errorf(".env mode = %o, want 600", st.Mode().Perm())
+	}
+}
+
+// postinst grants the service user DSM read access on the wizard video
+// dirs (the exact File Station "Read" ACE), and skips dirs that already
+// grant it anything. synoacltool is faked; the mask asserted is the one
+// DSM itself writes.
+func TestGrantVideoAccess(t *testing.T) {
+	if _, err := exec.LookPath("sh"); err != nil {
+		t.Skip("sh not available")
+	}
+	pkgvar := t.TempDir()
+	dest := t.TempDir()
+
+	volroot := t.TempDir()
+	target := filepath.Join(volroot, "vol1", "porn", "vr")
+	if err := os.MkdirAll(target, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	capture := filepath.Join(t.TempDir(), "acl.log")
+	fakebin := t.TempDir()
+	stub := "#!/bin/sh\necho \"ARGS: $@\" >> \"" + capture + "\"\n" +
+		"if [ \"$1\" = \"-get\" ]; then\n" +
+		"  if [ -n \"$FAKE_ACE\" ]; then echo \"$FAKE_ACE\"; fi\n" +
+		"  exit 0\nfi\nexit 0\n"
+	if err := os.WriteFile(filepath.Join(fakebin, "synoacltool"), []byte(stub), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	base := map[string]string{
+		"wizard_video_share":   "porn",
+		"wizard_video_subdirs": "vr",
+		"wizard_db_use":        "false",
+		"SYNOPKG_VOLUME_GLOB":  filepath.Join(volroot, "vol*"),
+		"PATH":                 fakebin + ":/usr/bin:/bin",
+	}
+	if err := runHook(t, pkgvar, dest, base, "service_postinst"); err != nil {
+		t.Fatalf("postinst failed: %v", err)
+	}
+	raw, err := os.ReadFile(capture)
+	if err != nil {
+		t.Fatalf("synoacltool never ran: %v", err)
+	}
+	if !strings.Contains(string(raw), "-add "+target+" ") {
+		t.Errorf("no -add for %q:\n%s", target, raw)
+	}
+	if !strings.Contains(string(raw), "allow:r-x---a-R-c--:fd--") {
+		t.Errorf("no File Station Read ACE:\n%s", raw)
+	}
+
+	// A dir that already grants the owner is left alone.
+	me, err := user.Current()
+	if err != nil {
+		t.Skipf("no current user: %v", err)
+	}
+	if err := os.Remove(capture); err != nil {
+		t.Fatal(err)
+	}
+	present := map[string]string{
+		"FAKE_ACE": "user:" + me.Username + ":allow:rwxpdDaARWc--:fd--",
+	}
+	for k, v := range base {
+		present[k] = v
+	}
+	pkgvar2 := t.TempDir()
+	if err := runHook(t, pkgvar2, dest, present, "service_postinst"); err != nil {
+		t.Fatalf("postinst failed: %v", err)
+	}
+	raw2, err := os.ReadFile(capture)
+	if err != nil {
+		t.Fatalf("synoacltool never ran: %v", err)
+	}
+	if strings.Contains(string(raw2), "-add ") {
+		t.Errorf("-add ran despite existing ACE:\n%s", raw2)
+	}
+}
+
+// The share box tolerates a full path and padding whitespace instead of
+// failing the install (a GUI upgrade submitted "/volume2/porn").
+func TestVolumeDirsTolerance(t *testing.T) {
+	if _, err := exec.LookPath("sh"); err != nil {
+		t.Skip("sh not available")
+	}
+	volroot := t.TempDir()
+	virtual := filepath.Join(volroot, "vol1", "porn", "virtual")
+	if err := os.MkdirAll(virtual, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	absdir := t.TempDir()
+	runDirs := func(t *testing.T, env map[string]string) (string, error) {
+		t.Helper()
+		cmd := exec.Command("sh", "-c", `. ./service-setup; volume_dirs`)
+		cmd.Dir = filepath.Join(spkDir(t), "scripts")
+		cmd.Env = []string{
+			"SYNOPKG_PKGVAR=" + t.TempDir(), "SYNOPKG_PKGDEST=" + t.TempDir(),
+			"PATH=/usr/bin:/bin",
+			"SYNOPKG_VOLUME_GLOB=" + filepath.Join(volroot, "vol*"),
+		}
+		for k, v := range env {
+			cmd.Env = append(cmd.Env, k+"="+v)
+		}
+		out, err := cmd.Output()
+		return strings.TrimSpace(string(out)), err
+	}
+	if got, err := runDirs(t, map[string]string{
+		"wizard_video_share": "porn ", "wizard_video_subdirs": "virtual",
+	}); err != nil || got != virtual {
+		t.Errorf("padded share = %q, %v; want %q", got, err, virtual)
+	}
+	if got, err := runDirs(t, map[string]string{
+		"wizard_video_share": absdir,
+	}); err != nil || got != absdir {
+		t.Errorf("absolute share = %q, %v; want %q", got, err, absdir)
+	}
+	if got, err := runDirs(t, map[string]string{
+		"wizard_video_share": "/nonexistent-share",
+	}); err == nil {
+		t.Errorf("missing absolute share = %q, nil error; want failure", got)
 	}
 }
 
