@@ -28,16 +28,14 @@ never overwrite `.env`. Install scripts run as root but the daemon runs
 as the service user, so postinst hands `.env`/`volumes.txt`/`bin/` to
 the var-dir owner — an unreadable `.env` aborts service start.
 
-## ffmpeg: dependency + symlink, with fallback
+## ffmpeg: none of our business
 
-`INFO` declares `install_dep_packages="ffmpeg6"` (DSM 7.1 avoton build;
-ffmpeg7 only ships DSM 7.2 builds). On install/upgrade, `service-setup`
-symlinks the system `ffprobe`/`ffmpeg` into `var/bin/` — the exact
-paths XBVR's `CheckDependencies` stats, so a present file means **no
-download**. It never overwrites existing files; with no system pair
-present, XBVR self-downloads its static 4.2.1 pair on first run as
-before. Newer demuxers fix the probe errors the 4.2.1 build throws on
-newer files.
+No ffmpeg dependency is declared and postinst does no ffmpeg handling:
+XBVR self-downloads its static 4.2.1 `ffprobe`/`ffmpeg` pair into
+`var/bin/` on first run. Measured on a 21-file probe-failure corpus,
+the SynoCommunity ffmpeg6 build fails the exact same 8 genuinely broken
+files — no demuxer advantage found, so the extra machinery (and the
+hard dep that blocked installs) was removed.
 
 ## Building & distribution
 
@@ -49,7 +47,7 @@ newer files.
    list it (direct Pages links only — DSM can't follow
    releases/download 302s).
 
-`make` runs `go vet` + the 9-test packer suite: INFO shape (9999, no
-adminurl, ffmpeg6 dep), wizard generators + prefill (incl. checkbox
+`make` runs `go vet` + the packer suite: INFO shape (9999, no
+adminurl, no hard deps), wizard generators + prefill (incl. checkbox
 booleans), MariaDB create SQL + loud failure + root-secret hygiene,
-share resolution, ffmpeg symlinks, installer failure propagation.
+share resolution, var ownership, installer failure propagation.

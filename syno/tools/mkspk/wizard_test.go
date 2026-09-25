@@ -229,9 +229,9 @@ func runHook(t *testing.T, pkgvar, dest string, env map[string]string, hook stri
 
 // postinst with MariaDB chosen: creates the database idempotently via a
 // fake mysql client, writes a .env with the URL (DSM port 3307 default),
-// links system ffprobe/ffmpeg without overwriting, resolves the share
-// into the volumes reminder, never stores the root password, and never
-// overwrites an existing .env.
+// resolves the share into the volumes reminder, never stores the root
+// password, and never overwrites an existing .env. (ffmpeg is untouched:
+// XBVR self-downloads its static pair on first run.)
 func TestServicePostinstWritesEnv(t *testing.T) {
 	if _, err := exec.LookPath("sh"); err != nil {
 		t.Skip("sh not available")
@@ -239,14 +239,7 @@ func TestServicePostinstWritesEnv(t *testing.T) {
 	pkgvar := t.TempDir()
 	dest := t.TempDir()
 
-	// Fake system ffmpeg6 on PATH.
 	fakebin := t.TempDir()
-	for _, tool := range []string{"ffprobe", "ffmpeg"} {
-		p := filepath.Join(fakebin, tool)
-		if err := os.WriteFile(p, []byte("#!/bin/sh\necho fake\n"), 0o755); err != nil {
-			t.Fatal(err)
-		}
-	}
 
 	// Fake mysql client capturing args + stdin.
 	capture := filepath.Join(t.TempDir(), "mysql.log")
@@ -326,16 +319,6 @@ func TestServicePostinstWritesEnv(t *testing.T) {
 		t.Errorf(".env mode = %o, want 600", st.Mode().Perm())
 	}
 
-	for _, tool := range []string{"ffprobe", "ffmpeg"} {
-		fi, err := os.Lstat(filepath.Join(pkgvar, "bin", tool))
-		if err != nil {
-			t.Fatalf("bin/%s not linked: %v", tool, err)
-		}
-		if fi.Mode()&os.ModeSymlink == 0 {
-			t.Errorf("bin/%s is not a symlink", tool)
-		}
-	}
-
 	rem, err := os.ReadFile(filepath.Join(pkgvar, "volumes.txt"))
 	if err != nil {
 		t.Fatalf("volumes.txt not written: %v", err)
@@ -344,7 +327,7 @@ func TestServicePostinstWritesEnv(t *testing.T) {
 		t.Errorf("volumes.txt lacks resolved share path:\n%s", rem)
 	}
 
-	// Second run keeps the user's file (and existing symlinks).
+	// Second run keeps the user's file.
 	sentinel := []byte("XBVR_WEB_PORT='1111'\n")
 	if err := os.WriteFile(filepath.Join(pkgvar, ".env"), sentinel, 0o600); err != nil {
 		t.Fatal(err)
@@ -455,6 +438,11 @@ func TestPostinstClaimsVarFiles(t *testing.T) {
 	}
 	pkgvar := t.TempDir()
 	dest := t.TempDir()
+
+	// Pre-existing bin dir (upgrade scenario): claimed, not managed.
+	if err := os.MkdirAll(filepath.Join(pkgvar, "bin"), 0o755); err != nil {
+		t.Fatal(err)
+	}
 
 	// Fake chown capturing its args (proves wiring without privileges).
 	capture := filepath.Join(t.TempDir(), "chown.log")

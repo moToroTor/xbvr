@@ -10,7 +10,10 @@ import (
 // DSM's Open button goes to http://host:adminport/adminurl. XBVR serves
 // its UI at / with /api/* beside it, so any adminurl prefix would 404.
 // Like Radarr/Jackett, declare only adminport so DSM opens the root.
-// The ffmpeg6 dependency must stay: postinst symlinks its binaries.
+// ffmpeg6 is deliberately NOT a dependency and postinst does no ffmpeg
+// handling: XBVR self-downloads its static pair, and measured
+// probe results show no ffmpeg6 advantage. A hard dep only blocks
+// installs.
 func TestInfoOpensAtRoot(t *testing.T) {
 	raw, err := os.ReadFile(filepath.Join(spkDir(t), "INFO"))
 	if err != nil {
@@ -35,8 +38,8 @@ func TestInfoOpensAtRoot(t *testing.T) {
 	if u, ok := fields["adminurl"]; ok && u != "" {
 		t.Errorf("adminurl = %q, want absent (DSM would open a 404 path)", u)
 	}
-	if !strings.Contains(fields["install_dep_packages"], "ffmpeg6") {
-		t.Errorf("install_dep_packages = %q, want ffmpeg6 dependency", fields["install_dep_packages"])
+	if fields["install_dep_packages"] != "" {
+		t.Errorf("install_dep_packages = %q, want empty (ffmpeg6 is opportunistic, not required)", fields["install_dep_packages"])
 	}
 	if fields["package"] != "xbvr" {
 		t.Errorf("package = %q, want xbvr", fields["package"])

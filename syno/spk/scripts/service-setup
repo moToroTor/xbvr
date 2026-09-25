@@ -159,25 +159,6 @@ ensure_db()
     fi
 }
 
-link_ffbins()
-{
-    # XBVR self-downloads ffprobe+ffmpeg 4.2.1 into AppDir/bin on first
-    # run and skips the download when the files exist. Prefer the system
-    # ffmpeg6 package (newer demuxers, fewer probe errors): symlink it in
-    # when present, never overwrite existing files.
-    mkdir -p "${SYNOPKG_PKGVAR}/bin" || return 1
-    for tool in ffprobe ffmpeg; do
-        dest="${SYNOPKG_PKGVAR}/bin/${tool}"
-        if [ -e "$dest" ]; then
-            continue
-        fi
-        sysbin=$(command -v "$tool" 2>/dev/null)
-        if [ -n "$sysbin" ]; then
-            ln -s "$sysbin" "$dest"
-        fi
-    done
-}
-
 claim_var_files()
 {
     # postinst runs as root but the daemon runs as the service user, and
@@ -273,7 +254,6 @@ service_postinst()
 {
     # Fresh install only: never overwrite an existing .env.
     if [ -f "${SYNOPKG_PKGVAR}/.env" ]; then
-        link_ffbins
         claim_var_files
         return 0
     fi
@@ -281,7 +261,6 @@ service_postinst()
         ensure_db || return 1
     fi
     write_dotenv || return 1
-    link_ffbins
     write_volumes_reminder || return 1
     claim_var_files
 }
@@ -296,13 +275,11 @@ service_postupgrade()
             ensure_db || return 1
         fi
         write_dotenv || return 1
-        link_ffbins
         write_volumes_reminder || return 1
         claim_var_files
         return 0
     fi
     if [ -z "${wizard_port:-}" ] && [ -z "${wizard_db_use:-}" ] && [ -z "${wizard_video_share:-}" ] && [ -z "${wizard_video_subdirs:-}" ]; then
-        link_ffbins
         claim_var_files
         return 0
     fi
@@ -310,7 +287,6 @@ service_postupgrade()
         ensure_db || return 1
     fi
     write_dotenv || return 1
-    link_ffbins
     write_volumes_reminder || return 1
     claim_var_files
 }
