@@ -111,6 +111,7 @@ jobs:
         run: |
           mkdir -p pages/dl
           cp dist/*.spk dist/*.icon_72.png dist/*.icon_256.png pages/dl/
+          cp syno/upgrade.sh pages/upgrade.sh
           cd syno
           go run ./tools/mkcatalog \
             --manifests '../dist/*.manifest.json' \
