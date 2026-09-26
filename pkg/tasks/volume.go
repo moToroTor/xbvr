@@ -79,9 +79,9 @@ func RescanVolumes(id int) {
 			extArgs := make([]interface{}, 0, len(variants))
 			extConds := make([]string, 0, len(variants))
 			for _, v := range variants {
-				likeConds = append(likeConds, `filenames_arr LIKE ? ESCAPE '\'`)
+				likeConds = append(likeConds, `filenames_arr LIKE ? ESCAPE '!'`)
 				likeArgs = append(likeArgs, `%"`+escapeLike(v)+`"%`)
-				extConds = append(extConds, `external_data LIKE ? ESCAPE '\'`)
+				extConds = append(extConds, `external_data LIKE ? ESCAPE '!'`)
 				extArgs = append(extArgs, `%"`+escapeLike(v)+`%`)
 			}
 			err := db.Where(strings.Join(likeConds, " OR "), likeArgs...).Find(&scenes).Error
