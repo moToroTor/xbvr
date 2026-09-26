@@ -3,16 +3,21 @@ package scrape
 import (
 	"strconv"
 	"strings"
-	"sync"
 
-	"github.com/gocolly/colly"
+	"github.com/gocolly/colly/v2"
 	"github.com/mozillazg/go-slugify"
 	"github.com/nleeper/goment"
 	"github.com/xbapps/xbvr/pkg/models"
 )
 
-func PornhubVRSite(wg *sync.WaitGroup, updateSite bool, knownScenes []string, out chan<- models.ScrapedScene, scraperID string, siteID string, URL string) error {
+// Ported from upstream #618 to the current scraper conventions (colly v2,
+// ScrapeWG, 5-arg registration). Pornhub won't show scene details without
+// login, so scenes are built from the channel listing thumbnails; a
+// single-scene URL gets visited best-effort and simply yields nothing.
+func PornhubOriginalsVR(wg *models.ScrapeWG, updateSite bool, knownScenes []string, out chan<- models.ScrapedScene, singleSceneURL string, singeScrapeAdditionalInfo string, limitScraping bool) error {
 	defer wg.Done()
+	scraperID := "pornhuboriginalsvr"
+	siteID := "Pornhub Originals VR"
 	logScrapeStart(scraperID, siteID)
 
 	siteCollector := createCollector("www.pornhub.com")
@@ -59,7 +64,11 @@ func PornhubVRSite(wg *sync.WaitGroup, updateSite bool, knownScenes []string, ou
 		siteCollector.Visit(pageURL)
 	})
 
-	siteCollector.Visit(URL + "channels/pornhub-originals-vr/videos?o=da&premium=1")
+	if singleSceneURL != "" {
+		siteCollector.Visit(singleSceneURL)
+	} else {
+		siteCollector.Visit("https://www.pornhub.com/channels/pornhub-originals-vr/videos?o=da&premium=1")
+	}
 
 	if updateSite {
 		updateSiteLastUpdate(scraperID)
@@ -68,10 +77,6 @@ func PornhubVRSite(wg *sync.WaitGroup, updateSite bool, knownScenes []string, ou
 	return nil
 }
 
-func PornhubVR(wg *sync.WaitGroup, updateSite bool, knownScenes []string, out chan<- models.ScrapedScene) error {
-	return PornhubVRSite(wg, updateSite, knownScenes, out, "pornhuboriginalsvr", "Pornhub Originals VR", "https://www.pornhub.com/")
-}
-
 func init() {
-	registerScraper("pornhuboriginalsvr", "Pornhub Originals VR", "https://di.phncdn.com/pics/sites/000/027/151/avatar1568051926/(m=eidYGe)(mh=bRnuBN2GXIj7F2OV)200x200.jpg", PornhubVR)
+	registerScraper("pornhuboriginalsvr", "Pornhub Originals VR", "https://di.phncdn.com/pics/sites/000/027/151/avatar1568051926/(m=eidYGe)(mh=bRnuBN2GXIj7F2OV)200x200.jpg", "pornhub.com", PornhubOriginalsVR)
 }
