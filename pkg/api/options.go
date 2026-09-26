@@ -88,6 +88,7 @@ type RequestSaveOptionsAdvanced struct {
 	ScraperProxy                 string    `json:"scraperProxy"`
 	StashApiKey                  string    `json:"stashApiKey"`
 	ScrapeActorAfterScene        bool      `json:"scrapeActorAfterScene"`
+	RestoreMissingActors         bool      `json:"restoreMissingActorsFromSceneEdits"`
 	UseImperialEntry             bool      `json:"useImperialEntry"`
 	LinkScenesAfterSceneScraping bool      `json:"linkScenesAfterSceneScraping"`
 	UseAltSrcInFileMatching      bool      `json:"useAltSrcInFileMatching"`
@@ -566,6 +567,7 @@ func (i ConfigResource) saveOptionsAdvanced(req *restful.Request, resp *restful.
 	config.Config.Advanced.StashApiKey = r.StashApiKey
 	config.Config.Advanced.ScraperProxy = r.ScraperProxy
 	config.Config.Advanced.ScrapeActorAfterScene = r.ScrapeActorAfterScene
+	config.Config.Advanced.RestoreMissingActors = r.RestoreMissingActors
 	config.Config.Advanced.UseImperialEntry = r.UseImperialEntry
 	config.Config.Advanced.LinkScenesAfterSceneScraping = r.LinkScenesAfterSceneScraping
 	config.Config.Advanced.UseAltSrcInFileMatching = r.UseAltSrcInFileMatching
