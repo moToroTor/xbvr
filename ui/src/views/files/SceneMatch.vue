@@ -49,7 +49,11 @@
               <input class="input" type="text" v-model='queryString' v-debounce:200ms="loadData" autofocus ref="searchInput">
             </div>
           </b-field>
-          
+
+          <div v-if="indexRebuilding" class="notification is-warning is-light">
+            {{ $t("Can't search for matching scenes while the search index is rebuilding. Results will load automatically when the task finishes.") }}
+          </div>
+
           <b-table :data="data" ref="table" paginated :current-page.sync="currentPage" per-page="5" :default-sort="['_score', 'desc']">
             <b-table-column field="cover_url" :label="$t('Image')" width="120" v-slot="props">
               <vue-load-image>
@@ -125,6 +129,8 @@ export default {
       dataNumResponses: 0,
       currentPage: 1,
       queryString: '',
+      indexRebuilding: false,
+      searchStateTimer: null,
       format,
       parseISO
     }
@@ -136,6 +142,9 @@ export default {
   },
   mounted () {
     this.initView()
+  },
+  beforeDestroy () {
+    this.clearIndexPoll()
   },
   methods: {
     initView () {
@@ -153,19 +162,77 @@ export default {
         this.file.filename
           .replace(/[._+'’`-]/g, ' ').replace(/\s+/g, ' ').trim()
           .split(' ').filter(isNotCommonWord).join(' '))
-      this.loadData()
+      this.checkSearchStateAndLoad()
+    },
+    async checkSearchStateAndLoad () {
+      // The scene search index is unreadable while it rebuilds (bundle
+      // import, reindex) — the query below would hang until timeout and the
+      // table would sit silently empty. Say so and retry when it clears.
+      let rebuilding = false
+      try {
+        const state = await ky.get('/api/options/state/search', { timeout: 10000 }).json()
+        rebuilding = state.inProgress === true
+      } catch (e) {
+        rebuilding = false
+      }
+      if (rebuilding) {
+        this.indexRebuilding = true
+        this.startIndexPoll()
+      } else {
+        this.indexRebuilding = false
+        this.clearIndexPoll()
+        this.loadData()
+      }
+    },
+    startIndexPoll () {
+      if (this.searchStateTimer !== null) {
+        return
+      }
+      this.searchStateTimer = setInterval(async () => {
+        let rebuilding = true
+        try {
+          const state = await ky.get('/api/options/state/search', { timeout: 10000 }).json()
+          rebuilding = state.inProgress === true
+        } catch (e) {
+          rebuilding = true
+        }
+        if (!rebuilding) {
+          this.indexRebuilding = false
+          this.clearIndexPoll()
+          this.loadData()
+        }
+      }, 5000)
+    },
+    clearIndexPoll () {
+      if (this.searchStateTimer !== null) {
+        clearInterval(this.searchStateTimer)
+        this.searchStateTimer = null
+      }
     },
     loadData: async function loadData () {
+      // While the index rebuilds, the poll above owns retrying — firing
+      // queries here would only hang until timeout.
+      if (this.indexRebuilding) {
+        return
+      }
       const requestIndex = this.dataNumRequests
       this.dataNumRequests = this.dataNumRequests + 1
 
-      const resp = await ky.get('/api/scene/search', {
-        searchParams: {
-          q: this.queryString,
-          fileId: this.toInt(this.file.id)
-        },
-        timeout: 60000
-      }).json()
+      let resp
+      try {
+        resp = await ky.get('/api/scene/search', {
+          searchParams: {
+            q: this.queryString,
+            fileId: this.toInt(this.file.id)
+          },
+          timeout: 60000
+        }).json()
+      } catch (e) {
+        // A rebuild may have started mid-session; re-check instead of
+        // leaving a silently empty table.
+        this.checkSearchStateAndLoad()
+        return
+      }
 
       if (requestIndex >= this.dataNumResponses) {
         this.dataNumResponses = requestIndex + 1
@@ -217,6 +284,7 @@ export default {
       }
     },
     close () {
+      this.clearIndexPoll()
       this.$store.commit('overlay/hideMatch')
     },
     toInt (value, radix, defaultValue) {
