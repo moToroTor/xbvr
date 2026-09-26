@@ -79,9 +79,9 @@ func RescanVolumes(id int) {
 			extArgs := make([]interface{}, 0, len(variants))
 			extConds := make([]string, 0, len(variants))
 			for _, v := range variants {
-				likeConds = append(likeConds, `filenames_arr LIKE ? ESCAPE '\'`)
+				likeConds = append(likeConds, `filenames_arr LIKE ? ESCAPE '!'`)
 				likeArgs = append(likeArgs, `%"`+escapeLike(v)+`"%`)
-				extConds = append(extConds, `external_data LIKE ? ESCAPE '\'`)
+				extConds = append(extConds, `external_data LIKE ? ESCAPE '!'`)
 				extArgs = append(extArgs, `%"`+escapeLike(v)+`%`)
 			}
 			err := db.Where(strings.Join(likeConds, " OR "), likeArgs...).Find(&scenes).Error
@@ -193,6 +193,20 @@ func RescanVolumes(id int) {
 
 			if (i % 50) == 0 {
 				tlog.Infof("Matching Scenes to known filenames (%v/%v)", i+1, len(files))
+			}
+		}
+
+		tlog.Infof("Generating funscript speeds")
+		GenerateFunscriptSpeeds(tlog)
+
+		// Update scene statuses
+		tlog.Infof("Update status of Scenes")
+		db.Model(&models.Scene{}).Find(&scenes)
+
+		for i := range scenes {
+			scenes[i].UpdateStatus()
+			if (i % 70) == 0 {
+				tlog.Infof("Update status of Scenes (%v/%v)", i+1, len(scenes))
 			}
 		}
 

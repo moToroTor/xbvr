@@ -1,3 +1,7 @@
+> **This is a fork of [xbapps/xbvr](https://github.com/xbapps/xbvr).** It ships crash fixes, scraper repairs,
+> and small features not yet merged upstream — the full list is at
+> [motorotor.github.io/xbvr](https://motorotor.github.io/xbvr/).
+
 [![Build Status](https://cloud.drone.io/api/badges/xbapps/xbvr/status.svg)](https://cloud.drone.io/xbapps/xbvr) ![GitHub release](https://img.shields.io/github/release/xbapps/xbvr.svg)
 <br>
 <sup><sub><em>Windows • macOS • Linux • Raspberry Pi</em></sub></sup>

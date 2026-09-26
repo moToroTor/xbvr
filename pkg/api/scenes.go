@@ -863,6 +863,7 @@ func (i SceneResource) selectScript(req *restful.Request, resp *restful.Response
 
 	var scene models.Scene
 	var files []models.File
+	var newFunscriptSpeed int
 	db, _ := models.GetDB()
 	err = scene.GetIfExistByPK(uint(sceneId))
 	if err == nil {
@@ -872,6 +873,7 @@ func (i SceneResource) selectScript(req *restful.Request, resp *restful.Response
 				if file.ID == r.FileID && !file.IsSelectedScript {
 					file.IsSelectedScript = true
 					file.Save()
+					newFunscriptSpeed = file.FunscriptSpeed
 				} else if file.ID != r.FileID && file.IsSelectedScript {
 					file.IsSelectedScript = false
 					file.Save()
@@ -879,6 +881,10 @@ func (i SceneResource) selectScript(req *restful.Request, resp *restful.Response
 			}
 		}
 		_ = scene.GetIfExistByPK(uint(sceneId))
+	}
+	if newFunscriptSpeed > 0 {
+		scene.FunscriptSpeed = newFunscriptSpeed
+		scene.Save()
 	}
 	db.Close()
 

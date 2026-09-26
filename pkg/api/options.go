@@ -88,6 +88,7 @@ type RequestSaveOptionsAdvanced struct {
 	ScraperProxy                 string    `json:"scraperProxy"`
 	StashApiKey                  string    `json:"stashApiKey"`
 	ScrapeActorAfterScene        bool      `json:"scrapeActorAfterScene"`
+	RestoreMissingActors         bool      `json:"restoreMissingActorsFromSceneEdits"`
 	UseImperialEntry             bool      `json:"useImperialEntry"`
 	LinkScenesAfterSceneScraping bool      `json:"linkScenesAfterSceneScraping"`
 	UseAltSrcInFileMatching      bool      `json:"useAltSrcInFileMatching"`
@@ -114,6 +115,7 @@ type RequestSaveOptionsDeoVR struct {
 	RemoteEnabled           bool   `json:"remote_enabled"`
 	TrackWatchTime          bool   `json:"track_watch_time"`
 	RenderHeatmaps          bool   `json:"render_heatmaps"`
+	FunscriptSpeeds         bool   `json:"funscript_speeds"`
 	AllowFileDeletes        bool   `json:"allow_file_deletes"`
 	AllowRatingUpdates      bool   `json:"allow_rating_updates"`
 	AllowFavoriteUpdates    bool   `json:"allow_favorite_updates"`
@@ -566,6 +568,7 @@ func (i ConfigResource) saveOptionsAdvanced(req *restful.Request, resp *restful.
 	config.Config.Advanced.StashApiKey = r.StashApiKey
 	config.Config.Advanced.ScraperProxy = r.ScraperProxy
 	config.Config.Advanced.ScrapeActorAfterScene = r.ScrapeActorAfterScene
+	config.Config.Advanced.RestoreMissingActors = r.RestoreMissingActors
 	config.Config.Advanced.UseImperialEntry = r.UseImperialEntry
 	config.Config.Advanced.LinkScenesAfterSceneScraping = r.LinkScenesAfterSceneScraping
 	config.Config.Advanced.UseAltSrcInFileMatching = r.UseAltSrcInFileMatching
@@ -601,6 +604,7 @@ func (i ConfigResource) saveOptionsDeoVR(req *restful.Request, resp *restful.Res
 	config.Config.Interfaces.DeoVR.Enabled = r.Enabled
 	config.Config.Interfaces.DeoVR.AuthEnabled = r.AuthEnabled
 	config.Config.Interfaces.DeoVR.RenderHeatmaps = r.RenderHeatmaps
+	config.Config.Interfaces.DeoVR.FunscriptSpeeds = r.FunscriptSpeeds
 	config.Config.Interfaces.DeoVR.RemoteEnabled = r.RemoteEnabled
 	config.Config.Interfaces.DeoVR.TrackWatchTime = r.TrackWatchTime
 	config.Config.Interfaces.DeoVR.Username = r.Username

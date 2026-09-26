@@ -45,6 +45,7 @@ type File struct {
 	ProjectionOverride string `json:"projection_override" xbvrbackup:"projection_override"`
 
 	HasHeatmap          bool `json:"has_heatmap" xbvrbackup:"-"`
+	FunscriptSpeed      int  `json:"funscript_speed" gorm:"default:0" xbvrbackup:"-"`
 	IsSelectedScript    bool `json:"is_selected_script" xbvrbackup:"is_selected_script"`
 	IsExported          bool `json:"is_exported" xbvrbackup:"-"`
 	RefreshHeatmapCache bool `json:"refresh_heatmap_cache" xbvrbackup:"-"`

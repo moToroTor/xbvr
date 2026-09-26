@@ -63,6 +63,8 @@
             <option value="file_path_asc">↑ {{ $t("File path") }}</option>
             <option value="file_path_desc">↓ {{ $t("File path") }}</option>
             <option value="alt_src_desc">↓ {{ $t("Linked to Alternate Sites") }}</option>
+            <option value="funscript_speed_desc">↓ {{ $t("Funscript speed") }}</option>
+            <option value="funscript_speed_asc">↑ {{ $t("Funscript speed") }}</option>
             <option value="random">↯ {{ $t("Random") }}</option>
           </select>
         </div>
@@ -230,6 +232,14 @@
           </b-taginput>
         </b-field>
       </b-tooltip>
+      <b-field label="Funscript speed" label-position="on-border" grouped>
+        <b-field class="field-extra" expanded>
+          <b-numberinput v-model="minFunscript" :controls="false"></b-numberinput>
+        </b-field>
+        <b-field class="field-extra" expanded>
+          <b-numberinput v-model="maxFunscript" :controls="false"></b-numberinput>
+        </b-field>
+      </b-field>
     </div>
     <div class="is-divider" data-content="Actor Also Known As groups"></div>
     <b-field>
@@ -862,7 +872,25 @@ export default {
       return tagGroupCnt == 1 ? false : true
 
     },
-}
+    minFunscript: {
+      get () {
+        return this.$store.state.sceneList.filters.minFunscript
+      },
+      set (value) {
+        this.$store.state.sceneList.filters.minFunscript = value
+        this.reloadList()
+      }
+    },
+    maxFunscript: {
+      get () {
+        return this.$store.state.sceneList.filters.maxFunscript
+      },
+      set (value) {
+        this.$store.state.sceneList.filters.maxFunscript = value
+        this.reloadList()
+      }
+    }
+  }
 }
 </script>
 

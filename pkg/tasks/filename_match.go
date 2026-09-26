@@ -15,11 +15,14 @@ func htmlEscapeFilename(s string) string {
 }
 
 // escapeLike quotes LIKE metacharacters so a filename matches literally.
-// Must be paired with `ESCAPE '\'` in the SQL; valid on sqlite and MySQL.
+// Must be paired with `ESCAPE '!'` in the SQL. `!` is used instead of the
+// usual backslash because backslash is a string-literal escape in
+// MySQL/MariaDB, so `ESCAPE '\'` is a syntax error (Error 1064) there —
+// it only ever worked on sqlite.
 func escapeLike(s string) string {
-	s = strings.ReplaceAll(s, `\`, `\\`)
-	s = strings.ReplaceAll(s, `%`, `\%`)
-	s = strings.ReplaceAll(s, `_`, `\_`)
+	s = strings.ReplaceAll(s, `!`, `!!`)
+	s = strings.ReplaceAll(s, `%`, `!%`)
+	s = strings.ReplaceAll(s, `_`, `!_`)
 	return s
 }
 

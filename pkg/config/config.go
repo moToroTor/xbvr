@@ -59,6 +59,7 @@ type ObjectConfig struct {
 		StashApiKey                  string    `default:"" json:"stashApiKey"`
 		ScraperProxy                 string    `default:"" json:"scraperProxy"`
 		ScrapeActorAfterScene        bool      `default:"true" json:"scrapeActorAfterScene"`
+		RestoreMissingActors         bool      `default:"true" json:"restoreMissingActorsFromSceneEdits"`
 		UseImperialEntry             bool      `default:"false" json:"useImperialEntry"`
 		ProgressTimeInterval         int       `default:"15" json:"progressTimeInterval"`
 		LinkScenesAfterSceneScraping bool      `default:"true" json:"linkScenesAfterSceneScraping"`
@@ -84,13 +85,14 @@ type ObjectConfig struct {
 			AllowedIP    []string `default:"[]" json:"allowedIp"`
 		} `json:"dlna"`
 		DeoVR struct {
-			Enabled        bool   `default:"true" json:"enabled"`
-			AuthEnabled    bool   `default:"false" json:"auth_enabled"`
-			RenderHeatmaps bool   `default:"false" json:"render_heatmaps"`
-			TrackWatchTime bool   `default:"true" json:"track_watch_time"`
-			RemoteEnabled  bool   `default:"false" json:"remote_enabled"`
-			Username       string `default:"" json:"username"`
-			Password       string `default:"" json:"password"`
+			Enabled         bool   `default:"true" json:"enabled"`
+			AuthEnabled     bool   `default:"false" json:"auth_enabled"`
+			RenderHeatmaps  bool   `default:"false" json:"render_heatmaps"`
+			FunscriptSpeeds bool   `default:"false" json:"funscript_speeds"`
+			TrackWatchTime  bool   `default:"true" json:"track_watch_time"`
+			RemoteEnabled   bool   `default:"false" json:"remote_enabled"`
+			Username        string `default:"" json:"username"`
+			Password        string `default:"" json:"password"`
 		} `json:"deovr"`
 		Heresphere struct {
 			AllowFileDeletes        bool `default:"false" json:"allow_file_deletes"`
