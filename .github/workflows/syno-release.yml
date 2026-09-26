@@ -1,7 +1,9 @@
 name: syno-release
 
 # Synology .spk for XBVR. Tag syno-v* in the fork; upstream version tags
-# are untouched.
+# are untouched. Release-line rule (enforced by the gate step in each
+# job): syno-v* tags are cut from main only. A tag cut anywhere else
+# fails fast before building SPKs or publishing the catalog.
 on:
   push:
     tags:
@@ -27,6 +29,16 @@ jobs:
             extra_apt: gcc-aarch64-linux-gnu
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Refuse tags cut off the release line
+        run: |
+          git fetch origin main:refs/remotes/origin/main
+          git merge-base --is-ancestor "$GITHUB_SHA" origin/main || {
+            echo "error: $GITHUB_REF_NAME ($GITHUB_SHA) is not on main; cut syno-v* tags from main only" >&2
+            exit 1
+          }
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
@@ -85,6 +97,17 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Refuse tags cut off the release line
+        run: |
+          git fetch origin main:refs/remotes/origin/main
+          git merge-base --is-ancestor "$GITHUB_SHA" origin/main || {
+            echo "error: $GITHUB_REF_NAME ($GITHUB_SHA) is not on main; cut syno-v* tags from main only" >&2
+            exit 1
+          }
+
       - uses: actions/download-artifact@v4
         with:
           path: dist
@@ -127,3 +150,6 @@ jobs:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_dir: ./pages
           publish_branch: gh-pages
+          # Keep files from previous deploys (old SPKs, upgrade.sh): a
+          # build from stale workflow content must never delete them.
+          keep_files: true
