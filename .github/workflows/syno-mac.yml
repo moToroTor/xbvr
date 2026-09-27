@@ -1,0 +1,72 @@
+name: syno-mac
+
+# Fork-only extra: attach a macOS Intel binary to syno-v* releases.
+# Deliberately a separate file so syno-release.yml stays untouched.
+on:
+  push:
+    tags:
+      - "syno-v*"
+
+permissions:
+  contents: write
+
+jobs:
+  mac-intel:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Refuse tags cut off the release line
+        run: |
+          git fetch origin main:refs/remotes/origin/main
+          git merge-base --is-ancestor "$GITHUB_SHA" origin/main || {
+            echo "error: $GITHUB_REF_NAME ($GITHUB_SHA) is not on main; cut syno-v* tags from main only" >&2
+            exit 1
+          }
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: yarn
+          cache-dependency-path: yarn.lock
+
+      - name: Build frontend
+        run: |
+          corepack enable
+          corepack prepare yarn@1.22.22 --activate
+          yarn install --frozen-lockfile
+          yarn build
+          test -f ui/dist/index.html
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      # ARM runner cross-compiling to Intel: the macOS SDK ships both
+      # arches, so plain clang -arch x86_64 links CGO (sqlite) fine.
+      - name: Cross-compile binary (darwin/amd64)
+        run: |
+          mkdir -p dist
+          export SDKROOT="$(xcrun --sdk macosx --show-sdk-path)"
+          export CC="clang -arch x86_64"
+          CGO_ENABLED=1 GOOS=darwin GOARCH=amd64 \
+            go build -tags json1 -o "dist/xbvr-${GITHUB_REF_NAME}-macOS-intel" .
+          file "dist/xbvr-${GITHUB_REF_NAME}-macOS-intel"
+
+      # The syno-release publish job creates the release; it may not
+      # exist yet when this job finishes, so wait for it.
+      - name: Attach binary to release
+        run: |
+          for i in $(seq 1 40); do
+            if gh release view "${GITHUB_REF_NAME}" >/dev/null 2>&1; then
+              break
+            fi
+            sleep 30
+          done
+          gh release upload "${GITHUB_REF_NAME}" \
+            "dist/xbvr-${GITHUB_REF_NAME}-macOS-intel" --clobber
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
