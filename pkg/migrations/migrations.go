@@ -67,6 +67,16 @@ func Migrate(migrateTo string) {
 
 	migrations := []*gormigrate.Migration{
 		{
+			// Must stay first in the list: creates the funscript_speed
+			// columns before any data migration that persists full
+			// Scene/File structs (e.g. 0084's scene.Save()). The model
+			// already carries the field, so on databases whose
+			// migrations table predates 0089/0090 those saves die with
+			// "no such column" (fatal mid-upgrade).
+			ID:      "0000-ensure-funscript-speed-columns",
+			Migrate: Migrate0000EnsureFunscriptSpeedColumns,
+		},
+		{
 			ID: "0001",
 			Migrate: func(tx *gorm.DB) error {
 				return tx.
@@ -2717,6 +2727,32 @@ func MigrationRenameSceneId(tx *gorm.DB, scene models.Scene, newSceneID string, 
 
 	case 2:
 		// add code for version 2
+	}
+	return nil
+}
+
+// Migrate0000EnsureFunscriptSpeedColumns adds the funscript_speed columns
+// to scenes and files. See the list entry above for why it must run first.
+func Migrate0000EnsureFunscriptSpeedColumns(tx *gorm.DB) error {
+	// Only missing columns are added; on a fresh database the tables
+	// don't exist yet and 0001's full-model AutoMigrate (which runs
+	// right after this) creates them complete. Migrating a stub struct
+	// here would fail trying to create a table without a primary key.
+	type File struct {
+		FunscriptSpeed int `json:"funscript_speed" gorm:"default:0"`
+	}
+	if tx.HasTable("files") {
+		if err := tx.AutoMigrate(File{}).Error; err != nil {
+			return err
+		}
+	}
+	type Scene struct {
+		FunscriptSpeed int `json:"funscript_speed" gorm:"default:0"`
+	}
+	if tx.HasTable("scenes") {
+		if err := tx.AutoMigrate(Scene{}).Error; err != nil {
+			return err
+		}
 	}
 	return nil
 }
