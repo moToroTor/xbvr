@@ -130,6 +130,7 @@ func runScrapers(knownScenes []string, toScrape string, updateSite bool, collect
 				if site.ID == scraper.ID {
 					wg.Add(1)
 					go func(scraper models.Scraper) {
+						started := time.Now()
 						runScraperSafe(&wg, scraper, updateSite, knownScenes, collectedScenes, singleSceneURL, singeScrapeAdditionalInfo, site.LimitScraping)
 						var site models.Site
 						err := site.GetIfExist(scraper.ID)
@@ -137,6 +138,18 @@ func runScrapers(knownScenes []string, toScrape string, updateSite bool, collect
 							log.Error(err)
 							return
 						}
+						// Record the run outcome for the Scrapers page
+						// status ("blocked" vs "done").
+						blocked, failed := scrape.TakeRunStats(scraper.ID)
+						var newScenes int
+						commonDb.Model(&models.Scene{}).
+							Where("scraper_id = ? AND added_date >= ?", scraper.ID, started).
+							Count(&newScenes)
+						site.LastScrapeStartedAt = started
+						site.LastScrapeFinishedAt = time.Now()
+						site.LastScrapeNewScenes = newScenes
+						site.LastScrapeBlocked = blocked
+						site.LastScrapeErrors = failed
 						site.Save()
 					}(scraper)
 

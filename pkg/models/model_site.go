@@ -21,6 +21,13 @@ type Site struct {
 	MatchingParams string    `json:"matching_params" gorm:"size:1000" xbvrbackup:"matching_params"`
 	ScrapeStash    bool      `json:"scrape_stash" xbvrbackup:"scrape_stash"`
 	SceneCount     int       `gorm:"-" json:"scene_count" xbvrbackup:"-"`
+	// Last scrape run outcome, for the "why is this site empty" status.
+	// Ephemeral diagnostics, hence excluded from backups.
+	LastScrapeStartedAt  time.Time `json:"last_scrape_started_at" xbvrbackup:"-"`
+	LastScrapeFinishedAt time.Time `json:"last_scrape_finished_at" xbvrbackup:"-"`
+	LastScrapeNewScenes  int       `json:"last_scrape_new_scenes" xbvrbackup:"-"`
+	LastScrapeBlocked    int       `json:"last_scrape_blocked" xbvrbackup:"-"`
+	LastScrapeErrors     int       `json:"last_scrape_errors" xbvrbackup:"-"`
 }
 
 func (i *Site) Save() error {

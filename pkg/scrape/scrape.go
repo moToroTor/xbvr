@@ -3,10 +3,13 @@ package scrape
 import (
 	"crypto/sha1"
 	"encoding/hex"
+	"errors"
+	"net"
 	"net/url"
 	"os"
 	"path"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/PuerkitoBio/goquery"
@@ -117,6 +120,7 @@ func allowURLRevisit(c *colly.Collector) *colly.Collector {
 
 func createCallbacks(c *colly.Collector) *colly.Collector {
 	const maxRetries = 15
+	const maxTransientRetries = 3
 
 	c.OnRequest(func(r *colly.Request) {
 		attempt := r.Ctx.GetAny("attempt")
@@ -131,16 +135,36 @@ func createCallbacks(c *colly.Collector) *colly.Collector {
 	c.OnError(func(r *colly.Response, err error) {
 		attempt := r.Ctx.GetAny("attempt").(int)
 
+		retried := false
 		if r.StatusCode == 429 {
 			log.Errorln("Error:", r.StatusCode, err)
 
 			if attempt <= maxRetries {
 				unCache(r.Request.URL.String(), c.CacheDir)
-				log.Errorln("Waiting 2 seconds before next request...")
+				delay := retryDelay(attempt)
+				log.Errorf("Waiting %s before next request (attempt %d)...", delay, attempt)
 				r.Ctx.Put("attempt", attempt+1)
-				time.Sleep(2 * time.Second)
+				retrySleep(delay)
 				r.Request.Retry()
+				retried = true
 			}
+		} else if attempt <= maxTransientRetries && isTransientVisitError(r.StatusCode, err) {
+			// Transient failures (timeouts, 5xx) get a small retry budget so
+			// a single dead page doesn't silently drop scenes (a failed
+			// listing page is never revisited otherwise). 403/404 and other
+			// 4xx are permanent: retrying a block must not mask the block
+			// signal, and a missing page won't appear on retry.
+			unCache(r.Request.URL.String(), c.CacheDir)
+			delay := retryDelay(attempt)
+			log.Errorf("Transient error visiting %s (%s), retrying in %s (%d/%d)",
+				r.Request.URL, err, delay, attempt, maxTransientRetries)
+			r.Ctx.Put("attempt", attempt+1)
+			retrySleep(delay)
+			r.Request.Retry()
+			retried = true
+		}
+		if !retried {
+			recordVisitError(r.Request.URL.Hostname(), r.StatusCode)
 		}
 	})
 
@@ -189,9 +213,146 @@ func unCache(URL string, cacheDir string) {
 	hash := hex.EncodeToString(sum[:])
 	dir := path.Join(cacheDir, hash[:2])
 	filename := path.Join(dir, hash)
-	if err := os.Remove(filename); err != nil {
+	// A failed visit may never have been cached (e.g. timeouts); only a
+	// real removal failure is fatal.
+	if err := os.Remove(filename); err != nil && !os.IsNotExist(err) {
 		log.Fatal(err)
 	}
+}
+
+// retrySleep waits between attempts; a variable so tests can stub it out.
+var retrySleep = time.Sleep
+
+// Per-scraper counts of terminal page failures, for the run status shown
+// on the Scrapers page ("blocked" vs "done"). Fed from OnError, drained
+// by the task runner after each scraper finishes (TakeRunStats).
+type visitStats struct {
+	blocked int // HTTP 403: the site is refusing us
+	failed  int // everything else terminal: 404s, exhausted retries, ...
+}
+
+var runStats = struct {
+	sync.Mutex
+	m map[string]*visitStats
+}{m: map[string]*visitStats{}}
+
+var scraperDomainMap struct {
+	once sync.Once
+	m    map[string][]string
+}
+
+func domainScraperMap() map[string][]string {
+	scraperDomainMap.once.Do(func() {
+		m := map[string][]string{}
+		for _, s := range models.GetScrapers() {
+			if s.Domain == "" {
+				continue
+			}
+			d := GetCoreDomain(strings.ToLower(s.Domain))
+			m[d] = append(m[d], s.ID)
+		}
+		scraperDomainMap.m = m
+	})
+	return scraperDomainMap.m
+}
+
+// scraperIDsForHost resolves a request host to the scrapers serving it via
+// their registered core domains. Shared infrastructure (e.g. povr.com
+// serving tranzvr, brasilvr, ...) attributes to every scraper on it:
+// when the shared host refuses, all of them are blocked.
+func scraperIDsForHost(scrapers []models.Scraper, host string) []string {
+	if i := strings.Index(host, ":"); i >= 0 {
+		host = host[:i]
+	}
+	want := GetCoreDomain(strings.ToLower(host))
+	var ids []string
+	for _, s := range scrapers {
+		if s.Domain == "" {
+			continue
+		}
+		if GetCoreDomain(strings.ToLower(s.Domain)) == want {
+			ids = append(ids, s.ID)
+		}
+	}
+	return ids
+}
+
+func recordVisitError(host string, statusCode int) {
+	ids := domainScraperMap()[GetCoreDomain(strings.ToLower(host))]
+	if len(ids) == 0 {
+		return
+	}
+	blocked := statusCode == 403
+	runStats.Lock()
+	defer runStats.Unlock()
+	for _, id := range ids {
+		st := runStats.m[id]
+		if st == nil {
+			st = &visitStats{}
+			runStats.m[id] = st
+		}
+		if blocked {
+			st.blocked++
+		} else {
+			st.failed++
+		}
+	}
+}
+
+// TakeRunStats returns and clears the failure counters for one scraper.
+func TakeRunStats(scraperID string) (blocked, failed int) {
+	runStats.Lock()
+	defer runStats.Unlock()
+	st := runStats.m[scraperID]
+	if st == nil {
+		return 0, 0
+	}
+	delete(runStats.m, scraperID)
+	return st.blocked, st.failed
+}
+
+// retryDelay backs off exponentially from 2s, capped at 30s, so repeated
+// failures (a rate limiter answering 429 sixteen times in a row) slow
+// down instead of hammering on a fixed 2s metronome.
+func retryDelay(attempt int) time.Duration {
+	d := 2 * time.Second
+	for i := 1; i < attempt; i++ {
+		d *= 2
+		if d >= 30*time.Second {
+			return 30 * time.Second
+		}
+	}
+	return d
+}
+
+// isTransientVisitError reports whether a failed page visit is worth
+// retrying: timeouts, reset connections and 5xx. Anything else —
+// notably 403 (blocked) and 404 (gone) — is permanent.
+func isTransientVisitError(statusCode int, err error) bool {
+	if statusCode >= 500 && statusCode <= 599 {
+		return true
+	}
+	if statusCode != 0 {
+		return false
+	}
+	if err == nil {
+		return false
+	}
+	var netErr net.Error
+	if errors.As(err, &netErr) && netErr.Timeout() {
+		return true
+	}
+	msg := err.Error()
+	for _, s := range []string{
+		"Client.Timeout",
+		"context deadline exceeded",
+		"connection reset by peer",
+	} {
+		if strings.Contains(msg, s) {
+			return true
+		}
+	}
+	return false
 }
 
 func updateSiteLastUpdate(id string) {
