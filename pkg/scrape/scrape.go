@@ -3,11 +3,13 @@ package scrape
 import (
 	"crypto/sha1"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"net"
 	"net/url"
 	"os"
 	"path"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -229,6 +231,11 @@ var retrySleep = time.Sleep
 type visitStats struct {
 	blocked int // HTTP 403: the site is refusing us
 	failed  int // everything else terminal: 404s, exhausted retries, ...
+	// byCode counts terminal failures per status for the error-breakdown
+	// tooltip ("403 ×12, 502 ×2"). Key is the HTTP status; status 0
+	// (no response: timeouts, refused connections) is filed as "timeout",
+	// the overwhelmingly common case.
+	byCode map[string]int
 }
 
 var runStats = struct {
@@ -283,12 +290,13 @@ func recordVisitError(host string, statusCode int) {
 		return
 	}
 	blocked := statusCode == 403
+	code := visitErrorCode(statusCode)
 	runStats.Lock()
 	defer runStats.Unlock()
 	for _, id := range ids {
 		st := runStats.m[id]
 		if st == nil {
-			st = &visitStats{}
+			st = &visitStats{byCode: map[string]int{}}
 			runStats.m[id] = st
 		}
 		if blocked {
@@ -296,19 +304,40 @@ func recordVisitError(host string, statusCode int) {
 		} else {
 			st.failed++
 		}
+		st.byCode[code]++
 	}
 }
 
-// TakeRunStats returns and clears the failure counters for one scraper.
-func TakeRunStats(scraperID string) (blocked, failed int) {
+// visitErrorCode is the tooltip key for a terminal visit failure: the
+// HTTP status, or "timeout" when there was no response at all.
+func visitErrorCode(statusCode int) string {
+	if statusCode == 0 {
+		return "timeout"
+	}
+	return strconv.Itoa(statusCode)
+}
+
+// TakeRunStats returns and clears the failure counters for one scraper,
+// plus a compact JSON breakdown of failures per status
+// (e.g. {"403":12,"502":2}) backing the error tooltip on the Scrapers
+// page. The breakdown is "" when nothing terminal failed, so persisting
+// it also clears a previous run's detail.
+func TakeRunStats(scraperID string) (blocked, failed int, detail string) {
 	runStats.Lock()
 	defer runStats.Unlock()
 	st := runStats.m[scraperID]
 	if st == nil {
-		return 0, 0
+		return 0, 0, ""
 	}
 	delete(runStats.m, scraperID)
-	return st.blocked, st.failed
+	if len(st.byCode) == 0 {
+		return st.blocked, st.failed, ""
+	}
+	raw, err := json.Marshal(st.byCode)
+	if err != nil {
+		return st.blocked, st.failed, ""
+	}
+	return st.blocked, st.failed, string(raw)
 }
 
 // retryDelay backs off exponentially from 2s, capped at 30s, so repeated

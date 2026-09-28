@@ -47,9 +47,12 @@ func TestRecordVisitErrorSharedHost(t *testing.T) {
 	}
 	recordVisitError("povr.com", 403)
 	for _, id := range ids {
-		blocked, failed := TakeRunStats(id)
+		blocked, failed, detail := TakeRunStats(id)
 		if blocked != 1 || failed != 0 {
 			t.Errorf("TakeRunStats(%q) = (%d, %d), want (1, 0)", id, blocked, failed)
+		}
+		if detail != `{"403":1}` {
+			t.Errorf("TakeRunStats(%q) detail = %q, want %q", id, detail, `{"403":1}`)
 		}
 	}
 }
@@ -61,8 +64,8 @@ func TestRecordVisitErrorUnknownHost(t *testing.T) {
 	}
 	recordVisitError("no-such-site.invalid", 403)
 	for _, id := range ids {
-		if blocked, failed := TakeRunStats(id); blocked != 0 || failed != 0 {
-			t.Errorf("unknown host leaked into %q stats: (%d, %d)", id, blocked, failed)
+		if blocked, failed, detail := TakeRunStats(id); blocked != 0 || failed != 0 || detail != "" {
+			t.Errorf("unknown host leaked into %q stats: (%d, %d, %q)", id, blocked, failed, detail)
 		}
 	}
 }
@@ -74,14 +77,42 @@ func TestTakeRunStatsDrains(t *testing.T) {
 	}
 	id := ids[0]
 	recordVisitError("povr.com", 500)
-	blocked, failed := TakeRunStats(id)
+	blocked, failed, detail := TakeRunStats(id)
 	if blocked != 0 || failed != 1 {
 		t.Fatalf("TakeRunStats = (%d, %d), want (0, 1)", blocked, failed)
 	}
-	if blocked, failed := TakeRunStats(id); blocked != 0 || failed != 0 {
-		t.Errorf("second TakeRunStats = (%d, %d), want (0, 0)", blocked, failed)
+	if detail != `{"500":1}` {
+		t.Errorf("TakeRunStats detail = %q, want %q", detail, `{"500":1}`)
 	}
-	if blocked, failed := TakeRunStats("never-ran"); blocked != 0 || failed != 0 {
-		t.Errorf("TakeRunStats(never-ran) = (%d, %d), want (0, 0)", blocked, failed)
+	if blocked, failed, detail := TakeRunStats(id); blocked != 0 || failed != 0 || detail != "" {
+		t.Errorf("second TakeRunStats = (%d, %d, %q), want (0, 0, \"\")", blocked, failed, detail)
+	}
+	if blocked, failed, detail := TakeRunStats("never-ran"); blocked != 0 || failed != 0 || detail != "" {
+		t.Errorf("TakeRunStats(never-ran) = (%d, %d, %q), want (0, 0, \"\")", blocked, failed, detail)
+	}
+}
+
+// The breakdown accumulates per status across visits, including status 0
+// (no response) as "timeout", and drains with the counters.
+func TestTakeRunStatsBreakdown(t *testing.T) {
+	ids := scraperIDsForHost(models.GetScrapers(), "povr.com")
+	if len(ids) == 0 {
+		t.Fatal("expected povr.com to resolve to scrapers")
+	}
+	id := ids[0]
+	recordVisitError("povr.com", 403)
+	recordVisitError("povr.com", 403)
+	recordVisitError("povr.com", 502)
+	recordVisitError("povr.com", 0)
+	blocked, failed, detail := TakeRunStats(id)
+	if blocked != 2 || failed != 2 {
+		t.Fatalf("TakeRunStats = (%d, %d), want (2, 2)", blocked, failed)
+	}
+	// encoding/json sorts map keys, so the expectation is deterministic.
+	if want := `{"403":2,"502":1,"timeout":1}`; detail != want {
+		t.Errorf("TakeRunStats detail = %q, want %q", detail, want)
+	}
+	for _, other := range ids[1:] {
+		TakeRunStats(other)
 	}
 }

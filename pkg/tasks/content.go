@@ -140,7 +140,7 @@ func runScrapers(knownScenes []string, toScrape string, updateSite bool, collect
 						}
 						// Record the run outcome for the Scrapers page
 						// status ("blocked" vs "done").
-						blocked, failed := scrape.TakeRunStats(scraper.ID)
+						blocked, failed, detail := scrape.TakeRunStats(scraper.ID)
 						var newScenes int
 						commonDb.Model(&models.Scene{}).
 							Where("scraper_id = ? AND added_date >= ?", scraper.ID, started).
@@ -150,6 +150,7 @@ func runScrapers(knownScenes []string, toScrape string, updateSite bool, collect
 						site.LastScrapeNewScenes = newScenes
 						site.LastScrapeBlocked = blocked
 						site.LastScrapeErrors = failed
+						site.LastScrapeErrorDetail = detail
 						site.Save()
 					}(scraper)
 

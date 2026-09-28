@@ -59,8 +59,10 @@
       </b-table-column>
       <b-table-column field="last_run" :label="$t('Last run')" v-slot="props" cell-class="no-wrap">
             <span v-if="props.row.last_scrape_finished_at !== '0001-01-01T00:00:00Z'">
-              <span v-if="props.row.last_scrape_blocked > 0" class="tag is-danger is-light">{{ $t('blocked') }} ×{{ props.row.last_scrape_blocked }}</span>
-              <span v-else-if="props.row.last_scrape_errors > 0" class="tag is-warning is-light">{{ $t('errors') }} ×{{ props.row.last_scrape_errors }}</span>
+              <b-tooltip v-if="props.row.last_scrape_blocked > 0 || props.row.last_scrape_errors > 0" :active="errorBreakdownTip(props.row) !== ''" :label="errorBreakdownTip(props.row)" :delay="250">
+                <span v-if="props.row.last_scrape_blocked > 0" class="tag is-danger is-light">{{ $t('blocked') }} ×{{ props.row.last_scrape_blocked }}</span>
+                <span v-else class="tag is-warning is-light">{{ $t('errors') }} ×{{ props.row.last_scrape_errors }}</span>
+              </b-tooltip>
               <span v-else-if="props.row.last_scrape_new_scenes > 0" class="tag is-success is-light">{{ props.row.last_scrape_new_scenes }} {{ $t('new') }}</span>
               <span v-else class="tag is-light">0 {{ $t('new') }}</span>
             </span>
@@ -435,6 +437,21 @@ export default {
       if (months < 12) return `${months}mo ago`
       const years = Math.floor(days / 365)
       return `${years}y ago`
+    },
+    errorBreakdownTip(row) {
+      // Turns the compact JSON breakdown ({"403":12,"502":2,"timeout":3})
+      // into tooltip text ("403 ×12, 502 ×2, timeout ×3"). Returns "" when
+      // there is nothing to show, which also disables the tooltip.
+      if (!row.last_scrape_error_detail) return ''
+      try {
+        const counts = JSON.parse(row.last_scrape_error_detail)
+        const parts = Object.entries(counts)
+          .filter(([, n]) => n > 0)
+          .map(([code, n]) => `${code} ×${n}`)
+        return parts.join(', ')
+      } catch (e) {
+        return ''
+      }
     },
     parseISO,
     formatDistanceToNow

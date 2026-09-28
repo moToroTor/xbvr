@@ -2459,6 +2459,13 @@ func Migrate(migrateTo string) {
 			ID:      "0091-site-scrape-run-status",
 			Migrate: Migrate0091SiteScrapeRunStatus,
 		},
+		{
+			// Per-status failure breakdown backing the Scrapers page
+			// error tooltip. Diagnostics only, never read by older
+			// code paths.
+			ID:      "0092-site-scrape-error-detail",
+			Migrate: Migrate0092SiteScrapeErrorDetail,
+		},
 	}
 
 	// Wrap migrations to automatically track progress
@@ -2738,6 +2745,16 @@ func Migrate0091SiteScrapeRunStatus(tx *gorm.DB) error {
 		LastScrapeNewScenes  int       `json:"last_scrape_new_scenes"`
 		LastScrapeBlocked    int       `json:"last_scrape_blocked"`
 		LastScrapeErrors     int       `json:"last_scrape_errors"`
+	}
+	return tx.AutoMigrate(Site{}).Error
+}
+
+// Migrate0092SiteScrapeErrorDetail adds the per-status failure breakdown
+// column to sites (compact JSON like {"403":12,"timeout":3}) backing the
+// Scrapers page error tooltip.
+func Migrate0092SiteScrapeErrorDetail(tx *gorm.DB) error {
+	type Site struct {
+		LastScrapeErrorDetail string `json:"last_scrape_error_detail"`
 	}
 	return tx.AutoMigrate(Site{}).Error
 }

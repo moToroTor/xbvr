@@ -28,6 +28,9 @@ type Site struct {
 	LastScrapeNewScenes  int       `json:"last_scrape_new_scenes" xbvrbackup:"-"`
 	LastScrapeBlocked    int       `json:"last_scrape_blocked" xbvrbackup:"-"`
 	LastScrapeErrors     int       `json:"last_scrape_errors" xbvrbackup:"-"`
+	// Compact JSON breakdown of the run's terminal failures per status
+	// (e.g. {"403":12,"502":2,"timeout":3}) for the error tooltip.
+	LastScrapeErrorDetail string `json:"last_scrape_error_detail" xbvrbackup:"-"`
 }
 
 func (i *Site) Save() error {
