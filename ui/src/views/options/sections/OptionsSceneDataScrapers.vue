@@ -57,6 +57,15 @@
               </span>
             </span>
       </b-table-column>
+      <b-table-column field="last_run" :label="$t('Last run')" v-slot="props" cell-class="no-wrap">
+            <span v-if="props.row.last_scrape_finished_at !== '0001-01-01T00:00:00Z'">
+              <span v-if="props.row.last_scrape_blocked > 0" class="tag is-danger is-light">{{ $t('blocked') }} ×{{ props.row.last_scrape_blocked }}</span>
+              <span v-else-if="props.row.last_scrape_errors > 0" class="tag is-warning is-light">{{ $t('errors') }} ×{{ props.row.last_scrape_errors }}</span>
+              <span v-else-if="props.row.last_scrape_new_scenes > 0" class="tag is-success is-light">{{ props.row.last_scrape_new_scenes }} {{ $t('new') }}</span>
+              <span v-else class="tag is-light">0 {{ $t('new') }}</span>
+            </span>
+            <span v-else>-</span>
+      </b-table-column>
       <b-table-column field="limit_scraping" :label="$t('Limit Scraping')" v-slot="props" width="60" sortable>
         <b-tooltip class="is-info" :label="$t('Limit scraping to newest scenes on the website. Turn off if you are missing scenes.')" :delay="250" >
           <span><b-switch v-model ="props.row.limit_scraping" @input="$store.dispatch('optionsSites/toggleLimitScraping', {id: props.row.id})"/></span>

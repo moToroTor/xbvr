@@ -9,6 +9,7 @@ import (
 	"os"
 	"path"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/PuerkitoBio/goquery"
@@ -134,6 +135,7 @@ func createCallbacks(c *colly.Collector) *colly.Collector {
 	c.OnError(func(r *colly.Response, err error) {
 		attempt := r.Ctx.GetAny("attempt").(int)
 
+		retried := false
 		if r.StatusCode == 429 {
 			log.Errorln("Error:", r.StatusCode, err)
 
@@ -144,16 +146,14 @@ func createCallbacks(c *colly.Collector) *colly.Collector {
 				r.Ctx.Put("attempt", attempt+1)
 				retrySleep(delay)
 				r.Request.Retry()
+				retried = true
 			}
-			return
-		}
-
-		// Transient failures (timeouts, 5xx) get a small retry budget so
-		// a single dead page doesn't silently drop scenes (a failed
-		// listing page is never revisited otherwise). 403/404 and other
-		// 4xx are permanent: retrying a block must not mask the block
-		// signal, and a missing page won't appear on retry.
-		if attempt <= maxTransientRetries && isTransientVisitError(r.StatusCode, err) {
+		} else if attempt <= maxTransientRetries && isTransientVisitError(r.StatusCode, err) {
+			// Transient failures (timeouts, 5xx) get a small retry budget so
+			// a single dead page doesn't silently drop scenes (a failed
+			// listing page is never revisited otherwise). 403/404 and other
+			// 4xx are permanent: retrying a block must not mask the block
+			// signal, and a missing page won't appear on retry.
 			unCache(r.Request.URL.String(), c.CacheDir)
 			delay := retryDelay(attempt)
 			log.Errorf("Transient error visiting %s (%s), retrying in %s (%d/%d)",
@@ -161,6 +161,10 @@ func createCallbacks(c *colly.Collector) *colly.Collector {
 			r.Ctx.Put("attempt", attempt+1)
 			retrySleep(delay)
 			r.Request.Retry()
+			retried = true
+		}
+		if !retried {
+			recordVisitError(r.Request.URL.Hostname(), r.StatusCode)
 		}
 	})
 
@@ -218,6 +222,94 @@ func unCache(URL string, cacheDir string) {
 
 // retrySleep waits between attempts; a variable so tests can stub it out.
 var retrySleep = time.Sleep
+
+// Per-scraper counts of terminal page failures, for the run status shown
+// on the Scrapers page ("blocked" vs "done"). Fed from OnError, drained
+// by the task runner after each scraper finishes (TakeRunStats).
+type visitStats struct {
+	blocked int // HTTP 403: the site is refusing us
+	failed  int // everything else terminal: 404s, exhausted retries, ...
+}
+
+var runStats = struct {
+	sync.Mutex
+	m map[string]*visitStats
+}{m: map[string]*visitStats{}}
+
+var scraperDomainMap struct {
+	once sync.Once
+	m    map[string][]string
+}
+
+func domainScraperMap() map[string][]string {
+	scraperDomainMap.once.Do(func() {
+		m := map[string][]string{}
+		for _, s := range models.GetScrapers() {
+			if s.Domain == "" {
+				continue
+			}
+			d := GetCoreDomain(strings.ToLower(s.Domain))
+			m[d] = append(m[d], s.ID)
+		}
+		scraperDomainMap.m = m
+	})
+	return scraperDomainMap.m
+}
+
+// scraperIDsForHost resolves a request host to the scrapers serving it via
+// their registered core domains. Shared infrastructure (e.g. povr.com
+// serving tranzvr, brasilvr, ...) attributes to every scraper on it:
+// when the shared host refuses, all of them are blocked.
+func scraperIDsForHost(scrapers []models.Scraper, host string) []string {
+	if i := strings.Index(host, ":"); i >= 0 {
+		host = host[:i]
+	}
+	want := GetCoreDomain(strings.ToLower(host))
+	var ids []string
+	for _, s := range scrapers {
+		if s.Domain == "" {
+			continue
+		}
+		if GetCoreDomain(strings.ToLower(s.Domain)) == want {
+			ids = append(ids, s.ID)
+		}
+	}
+	return ids
+}
+
+func recordVisitError(host string, statusCode int) {
+	ids := domainScraperMap()[GetCoreDomain(strings.ToLower(host))]
+	if len(ids) == 0 {
+		return
+	}
+	blocked := statusCode == 403
+	runStats.Lock()
+	defer runStats.Unlock()
+	for _, id := range ids {
+		st := runStats.m[id]
+		if st == nil {
+			st = &visitStats{}
+			runStats.m[id] = st
+		}
+		if blocked {
+			st.blocked++
+		} else {
+			st.failed++
+		}
+	}
+}
+
+// TakeRunStats returns and clears the failure counters for one scraper.
+func TakeRunStats(scraperID string) (blocked, failed int) {
+	runStats.Lock()
+	defer runStats.Unlock()
+	st := runStats.m[scraperID]
+	if st == nil {
+		return 0, 0
+	}
+	delete(runStats.m, scraperID)
+	return st.blocked, st.failed
+}
 
 // retryDelay backs off exponentially from 2s, capped at 30s, so repeated
 // failures (a rate limiter answering 429 sixteen times in a row) slow

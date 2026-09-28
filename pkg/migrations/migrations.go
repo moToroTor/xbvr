@@ -2452,6 +2452,13 @@ func Migrate(migrateTo string) {
 				return nil
 			},
 		},
+		{
+			// Per-scraper run outcome for the Scrapers page status
+			// ("blocked" vs "done"). Diagnostics only, never read by
+			// older code paths.
+			ID:      "0091-site-scrape-run-status",
+			Migrate: Migrate0091SiteScrapeRunStatus,
+		},
 	}
 
 	// Wrap migrations to automatically track progress
@@ -2719,6 +2726,20 @@ func MigrationRenameSceneId(tx *gorm.DB, scene models.Scene, newSceneID string, 
 		// add code for version 2
 	}
 	return nil
+}
+
+// Migrate0091SiteScrapeRunStatus adds the last-run outcome columns to
+// sites (started/finished timestamps, new-scene count, blocked and error
+// counts) backing the Scrapers page run status.
+func Migrate0091SiteScrapeRunStatus(tx *gorm.DB) error {
+	type Site struct {
+		LastScrapeStartedAt  time.Time `json:"last_scrape_started_at"`
+		LastScrapeFinishedAt time.Time `json:"last_scrape_finished_at"`
+		LastScrapeNewScenes  int       `json:"last_scrape_new_scenes"`
+		LastScrapeBlocked    int       `json:"last_scrape_blocked"`
+		LastScrapeErrors     int       `json:"last_scrape_errors"`
+	}
+	return tx.AutoMigrate(Site{}).Error
 }
 
 // Migrate0089FileProjectionOverride adds the files.projection_override
