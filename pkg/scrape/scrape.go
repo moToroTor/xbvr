@@ -3,6 +3,8 @@ package scrape
 import (
 	"crypto/sha1"
 	"encoding/hex"
+	"errors"
+	"net"
 	"net/url"
 	"os"
 	"path"
@@ -117,6 +119,7 @@ func allowURLRevisit(c *colly.Collector) *colly.Collector {
 
 func createCallbacks(c *colly.Collector) *colly.Collector {
 	const maxRetries = 15
+	const maxTransientRetries = 3
 
 	c.OnRequest(func(r *colly.Request) {
 		attempt := r.Ctx.GetAny("attempt")
@@ -141,6 +144,21 @@ func createCallbacks(c *colly.Collector) *colly.Collector {
 				time.Sleep(2 * time.Second)
 				r.Request.Retry()
 			}
+			return
+		}
+
+		// Transient failures (timeouts, 5xx) get a small retry budget so
+		// a single dead page doesn't silently drop scenes (a failed
+		// listing page is never revisited otherwise). 403/404 and other
+		// 4xx are permanent: retrying a block must not mask the block
+		// signal, and a missing page won't appear on retry.
+		if attempt <= maxTransientRetries && isTransientVisitError(r.StatusCode, err) {
+			unCache(r.Request.URL.String(), c.CacheDir)
+			log.Errorf("Transient error visiting %s (%s), retrying (%d/%d)",
+				r.Request.URL, err, attempt, maxTransientRetries)
+			r.Ctx.Put("attempt", attempt+1)
+			time.Sleep(2 * time.Second)
+			r.Request.Retry()
 		}
 	})
 
@@ -189,9 +207,41 @@ func unCache(URL string, cacheDir string) {
 	hash := hex.EncodeToString(sum[:])
 	dir := path.Join(cacheDir, hash[:2])
 	filename := path.Join(dir, hash)
-	if err := os.Remove(filename); err != nil {
+	// A failed visit may never have been cached (e.g. timeouts); only a
+	// real removal failure is fatal.
+	if err := os.Remove(filename); err != nil && !os.IsNotExist(err) {
 		log.Fatal(err)
 	}
+}
+
+// isTransientVisitError reports whether a failed page visit is worth
+// retrying: timeouts, reset connections and 5xx. Anything else —
+// notably 403 (blocked) and 404 (gone) — is permanent.
+func isTransientVisitError(statusCode int, err error) bool {
+	if statusCode >= 500 && statusCode <= 599 {
+		return true
+	}
+	if statusCode != 0 {
+		return false
+	}
+	if err == nil {
+		return false
+	}
+	var netErr net.Error
+	if errors.As(err, &netErr) && netErr.Timeout() {
+		return true
+	}
+	msg := err.Error()
+	for _, s := range []string{
+		"Client.Timeout",
+		"context deadline exceeded",
+		"connection reset by peer",
+	} {
+		if strings.Contains(msg, s) {
+			return true
+		}
+	}
+	return false
 }
 
 func updateSiteLastUpdate(id string) {
