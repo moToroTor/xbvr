@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/gocolly/colly/v2"
 )
@@ -48,6 +49,11 @@ func TestIsTransientVisitError(t *testing.T) {
 // a permanently failing page must be attempted exactly once (a 403 stays a
 // single block signal, never a retry storm).
 func TestTransientRetryRevisits(t *testing.T) {
+	// Skip the real backoff sleeps; the schedule itself is covered above.
+	oldSleep := retrySleep
+	retrySleep = func(time.Duration) {}
+	defer func() { retrySleep = oldSleep }()
+
 	var mu sync.Mutex
 	hits := map[string]int{}
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -101,5 +107,21 @@ func TestTransientRetryRevisits(t *testing.T) {
 	}
 	if hits["/blocked"] != 1 {
 		t.Errorf("/blocked visited %d times, want exactly 1 (blocks must not retry)", hits["/blocked"])
+	}
+}
+
+func TestRetryDelay(t *testing.T) {
+	for attempt, want := range map[int]time.Duration{
+		1:  2 * time.Second,
+		2:  4 * time.Second,
+		3:  8 * time.Second,
+		4:  16 * time.Second,
+		5:  30 * time.Second,
+		9:  30 * time.Second,
+		15: 30 * time.Second,
+	} {
+		if got := retryDelay(attempt); got != want {
+			t.Errorf("retryDelay(%d) = %s, want %s", attempt, got, want)
+		}
 	}
 }

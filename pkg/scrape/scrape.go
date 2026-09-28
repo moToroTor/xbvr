@@ -139,9 +139,10 @@ func createCallbacks(c *colly.Collector) *colly.Collector {
 
 			if attempt <= maxRetries {
 				unCache(r.Request.URL.String(), c.CacheDir)
-				log.Errorln("Waiting 2 seconds before next request...")
+				delay := retryDelay(attempt)
+				log.Errorf("Waiting %s before next request (attempt %d)...", delay, attempt)
 				r.Ctx.Put("attempt", attempt+1)
-				time.Sleep(2 * time.Second)
+				retrySleep(delay)
 				r.Request.Retry()
 			}
 			return
@@ -154,10 +155,11 @@ func createCallbacks(c *colly.Collector) *colly.Collector {
 		// signal, and a missing page won't appear on retry.
 		if attempt <= maxTransientRetries && isTransientVisitError(r.StatusCode, err) {
 			unCache(r.Request.URL.String(), c.CacheDir)
-			log.Errorf("Transient error visiting %s (%s), retrying (%d/%d)",
-				r.Request.URL, err, attempt, maxTransientRetries)
+			delay := retryDelay(attempt)
+			log.Errorf("Transient error visiting %s (%s), retrying in %s (%d/%d)",
+				r.Request.URL, err, delay, attempt, maxTransientRetries)
 			r.Ctx.Put("attempt", attempt+1)
-			time.Sleep(2 * time.Second)
+			retrySleep(delay)
 			r.Request.Retry()
 		}
 	})
@@ -212,6 +214,23 @@ func unCache(URL string, cacheDir string) {
 	if err := os.Remove(filename); err != nil && !os.IsNotExist(err) {
 		log.Fatal(err)
 	}
+}
+
+// retrySleep waits between attempts; a variable so tests can stub it out.
+var retrySleep = time.Sleep
+
+// retryDelay backs off exponentially from 2s, capped at 30s, so repeated
+// failures (a rate limiter answering 429 sixteen times in a row) slow
+// down instead of hammering on a fixed 2s metronome.
+func retryDelay(attempt int) time.Duration {
+	d := 2 * time.Second
+	for i := 1; i < attempt; i++ {
+		d *= 2
+		if d >= 30*time.Second {
+			return 30 * time.Second
+		}
+	}
+	return d
 }
 
 // isTransientVisitError reports whether a failed page visit is worth
