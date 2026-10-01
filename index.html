@@ -115,6 +115,15 @@ as of the latest build; merged upstream items drop off this page.</p>
   <a href="https://github.com/xbapps/xbvr/pull/622">PR #622</a> (imported; ported to current conventions)</li>
 <li><strong>Optional actor restoration from edit history</strong> —
   <a href="https://github.com/xbapps/xbvr/pull/2246">PR #2246</a> (imported)</li>
+<li><strong>Automatic JAV engine choice</strong> — the JAV importer can query every engine in order and
+  keep the most complete result ("Auto (best data)") instead of one fixed source</li>
+<li><strong>Web search in the manual scene creator</strong> — find a scene page on a supported site
+  and scrape-and-match it straight from the ranked candidate list</li>
+<li><strong>Scrapers page shows the last run</strong> — per-site new-scene counts plus blocked/error
+  tallies so an empty site says why</li>
+<li><strong>Scraper switches stay truthful</strong> — rows keyed by site id so toggling under filters
+  can't desync the display —
+  <a href="https://github.com/xbapps/xbvr/issues/2286">Issue #2286</a></li>
 </ul>
 
 <h3>Scraper repairs</h3>
@@ -139,6 +148,8 @@ as of the latest build; merged upstream items drop off this page.</p>
   renamed files rematch instead of landing in Unmatched —
   <a href="https://github.com/xbapps/xbvr/issues/348">#348</a>,
   <a href="https://github.com/xbapps/xbvr/issues/1739">#1739</a></li>
+<li><strong>Matching a file to a freshly scraped scene works</strong> — scenes with no stored
+  filenames yet no longer fail the match silently</li>
 <li><strong>DeoVR JSON output</strong> hardened against unescaped stored characters —
   <a href="https://github.com/xbapps/xbvr/issues/256">#256</a></li>
 <li><strong>DLNA filenames</strong> follow per-video projection —
