@@ -8,6 +8,7 @@
           <b-field grouped>
             <b-select placeholder="Select scraper" v-model="javrScraper">
               <option value="auto">Auto (best data)</option>
+              <option value="compare">Check all and choose</option>
               <option value="javdatabase">javdatabase.com</option>
               <option value="r18d">r18.dev</option>
               <option value="javlibrary">javlibrary.com</option>
@@ -24,6 +25,54 @@
           </p>
         </div>
       </div>
+
+      <b-modal :active.sync="isCompareModalActive" :width="1024" scroll="keep">
+        <div class="card">
+          <header class="card-header">
+            <p class="card-header-title">{{ $t("Compare engines for") }} {{ javrQuery }}</p>
+          </header>
+          <div class="card-content">
+            <b-loading :is-full-page="false" :active.sync="compareLoading"></b-loading>
+            <b-notification v-if="compareError" type="is-danger is-light" :closable="false">{{ compareError }}</b-notification>
+            <div class="columns is-multiline" v-if="!compareLoading">
+              <div class="column is-half" v-for="result in compareResults" :key="result.engine">
+                <div class="card">
+                  <header class="card-header">
+                    <p class="card-header-title">{{ result.engine }}</p>
+                    <span class="card-header-icon">
+                      <b-tag type="is-info is-light">{{ $t("Score") }} {{ result.score }}/12</b-tag>
+                      <b-tag v-if="result.complete" type="is-success is-light" style="margin-left:0.4em">{{ $t("Complete") }}</b-tag>
+                    </span>
+                  </header>
+                  <div class="card-content" v-if="result.scene">
+                    <div class="media">
+                      <div class="media-left">
+                        <figure class="image is-128x128">
+                          <img :src="compareCover(result)" loading="lazy">
+                        </figure>
+                      </div>
+                      <div class="media-content">
+                        <p><strong>{{ result.scene.title || result.scene._id }}</strong></p>
+                        <p class="is-size-7">
+                          {{ result.scene.studio }}<span v-if="result.scene.duration"> · {{ result.scene.duration }} min</span><span v-if="result.scene.released"> · {{ result.scene.released }}</span>
+                        </p>
+                        <p class="is-size-7" v-if="result.scene.cast && result.scene.cast.length">
+                          <b-tag rounded size="is-small" v-for="name in result.scene.cast.slice(0, 4)" :key="name">{{ name }}</b-tag>
+                        </p>
+                        <p class="is-size-7 has-text-grey" v-if="result.scene.synopsis">{{ result.scene.synopsis.slice(0, 220) }}</p>
+                      </div>
+                    </div>
+                    <b-button class="button is-primary is-outlined is-small" :loading="choosingEngine === result.engine" v-on:click="chooseJAVR(result)" style="margin-top:0.75em">{{ $t("Use this one") }}</b-button>
+                  </div>
+                  <div class="card-content" v-else>
+                    <p class="is-size-7 has-text-grey">{{ $t("No scene found.") }}</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </b-modal>
 
       <h3 class="title">{{$t('Import scene from TPDB')}}</h3>
       <div class="card">
@@ -110,6 +159,11 @@ export default {
       isSingleScrapeModalActive: false,
       singleScrapeId: '',
       additionalInfo: [],
+      isCompareModalActive: false,
+      compareLoading: false,
+      compareResults: [],
+      compareError: '',
+      choosingEngine: '',
     }
   },
   async mounted () {
@@ -144,7 +198,51 @@ export default {
       }
     },
     scrapeJAVR () {
+      if (this.javrScraper === 'compare') {
+        this.compareJAVR()
+        return
+      }
       ky.post('/api/task/scrape-javr', { json: { s: this.javrScraper, q: this.javrQuery } })
+    },
+    compareJAVR () {
+      this.compareResults = []
+      this.compareError = ''
+      this.compareLoading = true
+      this.isCompareModalActive = true
+      ky.post('/api/task/scrape-javr-compare', { json: { q: this.javrQuery }, timeout: 120000 })
+        .json()
+        .then(resp => {
+          this.compareResults = resp.results || []
+          this.compareLoading = false
+        })
+        .catch(() => {
+          this.compareError = 'Comparison failed. Check your connection and try again.'
+          this.compareLoading = false
+        })
+    },
+    chooseJAVR (result) {
+      this.choosingEngine = result.engine
+      this.compareError = ''
+      ky.post('/api/task/scrape-javr-choose', { json: { engine: result.engine, scene: result.scene }, timeout: 120000 })
+        .json()
+        .then(() => {
+          this.choosingEngine = ''
+          this.isCompareModalActive = false
+        })
+        .catch(() => {
+          this.compareError = 'Saving failed. Check your connection and try again.'
+          this.choosingEngine = ''
+        })
+    },
+    compareCover (result) {
+      if (!result.scene || !result.scene.covers || result.scene.covers.length === 0) {
+        return '/ui/images/blank.png'
+      }
+      const u = result.scene.covers[0]
+      if (u.startsWith('http')) {
+        return '/img/700x/' + u.replace('://', ':/')
+      }
+      return u
     },
     scrapeTPDB () {
       ky.post('/api/task/scrape-tpdb', {

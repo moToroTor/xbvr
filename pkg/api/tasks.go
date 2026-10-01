@@ -32,6 +32,20 @@ type RequestScrapeSearch struct {
 	Query string `json:"q"`
 }
 
+type RequestScrapeJAVRCompare struct {
+	Query string `json:"q"`
+}
+
+type ResponseScrapeJAVRCompare struct {
+	Response string                    `json:"status"`
+	Results  []scrape.JAVREngineResult `json:"results"`
+}
+
+type RequestScrapeJAVRChoose struct {
+	Engine string              `json:"engine"`
+	Scene  models.ScrapedScene `json:"scene"`
+}
+
 type ResponseScrapeSearch struct {
 	Response   string                   `json:"status"`
 	Candidates []scrape.ScrapeCandidate `json:"candidates"`
@@ -121,6 +135,13 @@ func (i TaskResource) WebService() *restful.WebService {
 	ws.Route(ws.POST("/scrape-search").To(i.scrapeSearch).
 		Metadata(restfulspec.KeyOpenAPITags, tags).
 		Writes(ResponseScrapeSearch{}))
+
+	ws.Route(ws.POST("/scrape-javr-compare").To(i.scrapeJAVRCompare).
+		Metadata(restfulspec.KeyOpenAPITags, tags).
+		Writes(ResponseScrapeJAVRCompare{}))
+
+	ws.Route(ws.POST("/scrape-javr-choose").To(i.scrapeJAVRChoose).
+		Metadata(restfulspec.KeyOpenAPITags, tags))
 
 	ws.Route(ws.GET("/relink_alt_aource_scenes").To(i.relink_alt_aource_scenes).
 		Metadata(restfulspec.KeyOpenAPITags, tags))
@@ -293,6 +314,38 @@ func (i TaskResource) scrapeSearch(req *restful.Request, resp *restful.Response)
 		candidates = []scrape.ScrapeCandidate{}
 	}
 	resp.WriteHeaderAndEntity(http.StatusOK, ResponseScrapeSearch{Response: "OK", Candidates: candidates})
+}
+func (i TaskResource) scrapeJAVRCompare(req *restful.Request, resp *restful.Response) {
+	var r RequestScrapeJAVRCompare
+	if err := req.ReadEntity(&r); err != nil {
+		log.Error(err)
+		return
+	}
+	q := strings.TrimSpace(r.Query)
+	if q == "" {
+		resp.WriteHeaderAndEntity(http.StatusOK, ResponseScrapeJAVRCompare{Response: "OK"})
+		return
+	}
+	// Read-only: no scrape lock, no config change, nothing persisted.
+	// Engines run concurrently against different hosts, so no pacing.
+	results := scrape.CompareJAVR(q, scrape.DefaultJAVREngines())
+	if results == nil {
+		results = []scrape.JAVREngineResult{}
+	}
+	resp.WriteHeaderAndEntity(http.StatusOK, ResponseScrapeJAVRCompare{Response: "OK", Results: results})
+}
+func (i TaskResource) scrapeJAVRChoose(req *restful.Request, resp *restful.Response) {
+	var r RequestScrapeJAVRChoose
+	if err := req.ReadEntity(&r); err != nil {
+		log.Error(err)
+		return
+	}
+	if r.Scene.SceneID == "" {
+		resp.WriteErrorString(http.StatusBadRequest, "no scene")
+		return
+	}
+	go tasks.PersistJAVRSceneChoice(r.Scene, r.Engine)
+	resp.WriteHeaderAndEntity(http.StatusOK, map[string]interface{}{"response": "OK"})
 }
 func (i TaskResource) relink_alt_aource_scenes(req *restful.Request, resp *restful.Response) {
 	go tasks.MatchAlternateSources()
