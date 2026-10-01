@@ -9,6 +9,13 @@ on:
     tags:
       - "syno-v*"
 
+# Duplicate tag-push deliveries must not race each other: runs for the
+# same tag cancel down to one survivor. A new tag is a different group
+# and never cancels an older release.
+concurrency:
+  group: syno-release-${{ github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: write
   pages: write
