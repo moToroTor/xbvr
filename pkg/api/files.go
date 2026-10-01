@@ -244,6 +244,23 @@ func (i FilesResource) listFiles(req *restful.Request, resp *restful.Response) {
 	resp.WriteHeaderAndEntity(http.StatusOK, files)
 }
 
+// appendFilenameToArr adds a filename to the JSON-encoded filenames list,
+// tolerating empty or corrupt stored values by starting a fresh list. A
+// scene with no stored filenames must not fail the match request.
+func appendFilenameToArr(stored string, filename string) string {
+	var list []string
+	if err := json.Unmarshal([]byte(stored), &list); err != nil {
+		log.Error(err)
+		list = []string{}
+	}
+	list = append(list, filename)
+	out, err := json.Marshal(list)
+	if err != nil {
+		return stored
+	}
+	return string(out)
+}
+
 func (i FilesResource) matchFile(req *restful.Request, resp *restful.Response) {
 	db, _ := models.GetDB()
 	defer db.Close()
@@ -252,6 +269,7 @@ func (i FilesResource) matchFile(req *restful.Request, resp *restful.Response) {
 	err := req.ReadEntity(&r)
 	if err != nil {
 		log.Error(err)
+		resp.WriteErrorString(http.StatusBadRequest, "invalid request")
 		return
 	}
 
@@ -260,6 +278,7 @@ func (i FilesResource) matchFile(req *restful.Request, resp *restful.Response) {
 	err = scene.GetIfExist(r.SceneID)
 	if err != nil {
 		log.Error(err)
+		resp.WriteErrorString(http.StatusNotFound, "scene not found")
 		return
 	}
 
@@ -271,18 +290,7 @@ func (i FilesResource) matchFile(req *restful.Request, resp *restful.Response) {
 	}
 
 	// Add File to the list of Scene filenames so it will be discovered when file is moved
-	var pfTxt []string
-	err = json.Unmarshal([]byte(scene.FilenamesArr), &pfTxt)
-	if err != nil {
-		log.Error(err)
-		return
-	}
-
-	pfTxt = append(pfTxt, f.Filename)
-	tmp, err := json.Marshal(pfTxt)
-	if err == nil {
-		scene.FilenamesArr = string(tmp)
-	}
+	scene.FilenamesArr = appendFilenameToArr(scene.FilenamesArr, f.Filename)
 
 	models.AddAction(scene.SceneID, "match", "filenames_arr", scene.FilenamesArr)
 
