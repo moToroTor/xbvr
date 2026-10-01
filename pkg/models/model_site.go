@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/avast/retry-go/v4"
+	"github.com/jinzhu/gorm"
 )
 
 type Site struct {
@@ -65,13 +66,37 @@ func InitSites() {
 	scrapers := GetScrapers()
 	for i := range scrapers {
 		if !strings.HasSuffix(scrapers[i].ID, "-single_scene") {
-			var st Site
-			db.Where(&Site{ID: scrapers[i].ID}).FirstOrCreate(&st)
-			st.Name = scrapers[i].Name
-			st.AvatarURL = scrapers[i].AvatarURL
-			st.IsBuiltin = true
-			st.MasterSiteID = scrapers[i].MasterSiteId
-			st.Save()
+			if err := initSiteRecord(db, scrapers[i]); err != nil {
+				log.Fatal("Failed to init site ", err)
+			}
 		}
 	}
+}
+
+// initSiteRecord upserts one builtin site row, writing only the columns
+// InitSites manages. Schema migrations run in the background while
+// InitSites runs at startup, so a full-struct save can reference columns a
+// pending migration has not added yet (e.g. the 0091 run-status columns on
+// a pre-0090 database: "no such column", retried, then log.Fatal) and take
+// the process down before migrations finish.
+func initSiteRecord(db *gorm.DB, scraper Scraper) error {
+	attrs := map[string]interface{}{
+		"name":           scraper.Name,
+		"avatar_url":     scraper.AvatarURL,
+		"is_builtin":     true,
+		"master_site_id": scraper.MasterSiteId,
+	}
+	// Writes use explicit table/column references only: a full-struct
+	// write would drag in columns a pending migration has not added yet.
+	// (Reads are safe with the struct: SELECT * only returns columns that
+	// exist, and absent fields stay zero.)
+	if db.Where("id = ?", scraper.ID).First(&Site{}).RecordNotFound() {
+		// Explicit column list (this gorm version drops map values on
+		// Create, emitting DEFAULT VALUES instead).
+		return db.Exec(
+			`INSERT INTO sites (id, name, avatar_url, is_builtin, master_site_id) VALUES (?, ?, ?, ?, ?)`,
+			scraper.ID, scraper.Name, scraper.AvatarURL, true, scraper.MasterSiteId,
+		).Error
+	}
+	return db.Table("sites").Where("id = ?", scraper.ID).UpdateColumns(attrs).Error
 }
