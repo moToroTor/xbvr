@@ -492,9 +492,13 @@ func ScrapeJAVR(queryString string, scraper string) {
 	}
 }
 
-// ScrapeJAVRAuto queries the JAV engines in priority order and persists only
-// the most complete result. Batch callers pass the scraper string through
-// unchanged, so no batch change is needed.
+// ScrapeJAVRAuto queries the JAV engines in priority order and persists the
+// most complete result per code. Multi-code input is split first (reusing
+// ParseJavCodes, like the batch path): without this the picker would treat
+// "a,b" as one lookup and keep a single winner, and a whole "a,b" string
+// would also pass query normalization untouched so every engine would see
+// the raw form. Batch callers pass the scraper string through unchanged,
+// so no batch change is needed.
 func ScrapeJAVRAuto(queryString string) {
 	if !models.CheckLock("scrape") {
 		models.CreateLock("scrape")
@@ -506,16 +510,41 @@ func ScrapeJAVRAuto(queryString string) {
 		config.Config.ScraperSettings.Javr.JavrScraper = "auto"
 		config.SaveConfig()
 
-		best := scrape.PickBestJAVR(queryString, scrape.DefaultJAVREngines(), func() {
-			tlog.Infof("JAV auto: waiting %v before next engine", javBatchDelay)
-			time.Sleep(javBatchDelay)
-		})
-
 		var collectedScenes []models.ScrapedScene
-		if best != nil {
-			collectedScenes = append(collectedScenes, *best)
+		for i, code := range ParseJavCodes(queryString) {
+			if i > 0 {
+				tlog.Infof("JAV auto: waiting %v before next code", javBatchDelay)
+				time.Sleep(javBatchDelay)
+			}
+			best := scrape.PickBestJAVR(code, scrape.DefaultJAVREngines(), func() {
+				tlog.Infof("JAV auto: waiting %v before next engine", javBatchDelay)
+				time.Sleep(javBatchDelay)
+			})
+			if best != nil {
+				collectedScenes = append(collectedScenes, *best)
+			}
 		}
 		persistJAVRScenes(collectedScenes, t0, tlog)
+	}
+}
+
+// PersistJAVRSceneChoice persists one compare-view result exactly as shown,
+// without re-fetching. The engine name keeps the JavrScraper preference in
+// step with a manual single-engine lookup.
+func PersistJAVRSceneChoice(scene models.ScrapedScene, engine string) {
+	if !models.CheckLock("scrape") {
+		models.CreateLock("scrape")
+		defer models.RemoveLock("scrape")
+		t0 := time.Now()
+		tlog := log.WithField("task", "scrape")
+		tlog.Infof("Scraping started at %s", t0.Format("Mon Jan _2 15:04:05 2006"))
+
+		if engine != "" {
+			config.Config.ScraperSettings.Javr.JavrScraper = engine
+			config.SaveConfig()
+		}
+
+		persistJAVRScenes([]models.ScrapedScene{scene}, t0, tlog)
 	}
 }
 

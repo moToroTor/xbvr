@@ -9,6 +9,8 @@ import (
 
 func fullJAVRScene() models.ScrapedScene {
 	return models.ScrapedScene{
+		SceneID:  "CODE-1",
+		SiteID:   "CODE-1",
 		Title:    "Scene Title",
 		Covers:   []string{"https://example.com/cover.jpg"},
 		Cast:     []string{"Actor One"},
@@ -23,40 +25,78 @@ func TestScoreScrapedScene(t *testing.T) {
 	cases := []struct {
 		name  string
 		scene models.ScrapedScene
+		query string
 		want  int
 	}{
-		{"empty", models.ScrapedScene{}, 0},
-		{"title only", models.ScrapedScene{Title: "T"}, 3},
-		{"full", fullJAVRScene(), 12},
-		{"no title or covers", models.ScrapedScene{Cast: []string{"A"}, Duration: 60, Released: "2024-01-01", Synopsis: "S", Studio: "St"}, 6},
+		{"empty", models.ScrapedScene{}, "OTHER-999", 0},
+		{"title only", models.ScrapedScene{Title: "T"}, "OTHER-999", 3},
+		{"full", fullJAVRScene(), "OTHER-999", 12},
+		{"no title or covers", models.ScrapedScene{Cast: []string{"A"}, Duration: 60, Released: "2024-01-01", Synopsis: "S", Studio: "St"}, "OTHER-999", 6},
+		{"dvd code as title scores nothing", models.ScrapedScene{Title: "KAVR-403"}, "KAVR-403", 0},
+		{"fanza code as title scores nothing", models.ScrapedScene{Title: "kavr00403"}, "KAVR-403", 0},
+		{"dashless code as title scores nothing", models.ScrapedScene{Title: "kavr403"}, "KAVR-403", 0},
+		{"real title with code query scores", models.ScrapedScene{Title: "A Real Title"}, "KAVR-403", 3},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			if got := ScoreScrapedScene(&c.scene); got != c.want {
+			if got := ScoreScrapedScene(&c.scene, c.query); got != c.want {
 				t.Errorf("ScoreScrapedScene = %d, want %d", got, c.want)
 			}
 		})
 	}
-	if got := ScoreScrapedScene(nil); got != 0 {
+	if got := ScoreScrapedScene(nil, "OTHER-999"); got != 0 {
 		t.Errorf("ScoreScrapedScene(nil) = %d, want 0", got)
 	}
 }
 
 func TestIsCompleteScrapedScene(t *testing.T) {
 	full := fullJAVRScene()
-	if !IsCompleteScrapedScene(&full) {
+	if !IsCompleteScrapedScene(&full, "OTHER-999") {
 		t.Error("full scene should be complete")
 	}
 	partial := full
 	partial.Duration = 0
-	if IsCompleteScrapedScene(&partial) {
+	if IsCompleteScrapedScene(&partial, "OTHER-999") {
 		t.Error("scene without duration should not be complete")
 	}
-	if IsCompleteScrapedScene(nil) {
+	codeTitle := full
+	codeTitle.Title = "KAVR-403"
+	if IsCompleteScrapedScene(&codeTitle, "KAVR-403") {
+		t.Error("code echo should not count as a title")
+	}
+	if IsCompleteScrapedScene(nil, "OTHER-999") {
 		t.Error("nil should not be complete")
 	}
-	if IsCompleteScrapedScene(&models.ScrapedScene{}) {
+	if IsCompleteScrapedScene(&models.ScrapedScene{}, "OTHER-999") {
 		t.Error("empty scene should not be complete")
+	}
+}
+
+func TestJAVRCodeConversion(t *testing.T) {
+	dvdCases := map[string]string{
+		"KAVR-403":    "KAVR-403",
+		"kavr00403":   "KAVR-403",
+		"84vrkm00139": "84vrkm00139", // leading digits: ambiguous, untouched
+		"VRKM-139":    "VRKM-139",
+		"nonsense":    "nonsense",
+		"":            "",
+	}
+	for in, want := range dvdCases {
+		if got := ToDVDID(in); got != want {
+			t.Errorf("ToDVDID(%q) = %q, want %q", in, got, want)
+		}
+	}
+	fanzaCases := map[string]string{
+		"KAVR-403":  "kavr00403",
+		"VRKM-139":  "vrkm00139",
+		"3DSVR-878": "13dsvr00878",
+		"kavr00403": "kavr00403",
+		"nonsense":  "nonsense",
+	}
+	for in, want := range fanzaCases {
+		if got := ToFanzaContentID(in); got != want {
+			t.Errorf("ToFanzaContentID(%q) = %q, want %q", in, got, want)
+		}
 	}
 }
 
@@ -121,6 +161,73 @@ func TestPickBestJAVR(t *testing.T) {
 		got := PickBestJAVR("CODE-1", engines, nil)
 		if got == nil || got.Title != partial.Title {
 			t.Fatalf("expected surviving engine result, got %+v", got)
+		}
+	})
+
+	t.Run("code echo loses to real title", func(t *testing.T) {
+		echo, real := fullJAVRScene(), fullJAVRScene()
+		echo.SceneID, echo.SiteID = "KAVR-403", "KAVR-403"
+		real.SceneID, real.SiteID = "KAVR-403", "KAVR-403"
+		echo.Title, echo.HomepageURL = "KAVR-403", "https://www.dmm.co.jp/digital/videoa/-/detail/=/cid=kavr00403/"
+		real.HomepageURL = echo.HomepageURL
+		var a, b int
+		engines := []JAVREngine{
+			stubEngine("first", []models.ScrapedScene{echo}, nil, &a),
+			stubEngine("second", []models.ScrapedScene{real}, nil, &b),
+		}
+		got := PickBestJAVR("KAVR-403", engines, nil)
+		if got == nil || got.Title != real.Title {
+			t.Fatalf("expected real title to win, got %+v", got)
+		}
+		if b != 1 {
+			t.Errorf("expected no early stop on a code echo, second engine called %d times", b)
+		}
+	})
+
+	t.Run("compare runs every engine with scores", func(t *testing.T) {
+		full, partial := fullJAVRScene(), fullJAVRScene()
+		partial.Covers, partial.Synopsis, partial.Studio = nil, "", ""
+		var a, b, c int
+		engines := []JAVREngine{
+			stubEngine("first", []models.ScrapedScene{full}, nil, &a),
+			stubEngine("second", nil, nil, &b),
+			stubEngine("third", []models.ScrapedScene{partial}, nil, &c),
+		}
+		got := CompareJAVR("CODE-1", engines)
+		if len(got) != 3 {
+			t.Fatalf("expected 3 results, got %d", len(got))
+		}
+		if a != 1 || b != 1 || c != 1 {
+			t.Errorf("expected every engine attempted once, got %d/%d/%d", a, b, c)
+		}
+		if got[0].Score != 12 || !got[0].Complete || got[0].Scene == nil {
+			t.Errorf("unexpected first result: %+v", got[0])
+		}
+		if got[1].Scene != nil || got[1].Score != 0 {
+			t.Errorf("empty engine should score 0 with nil scene: %+v", got[1])
+		}
+		if got[2].Score != 7 || got[2].Complete {
+			t.Errorf("unexpected third result: %+v", got[2])
+		}
+	})
+
+	t.Run("wrong-code scene is discarded", func(t *testing.T) {
+		wrong := fullJAVRScene()
+		wrong.SceneID, wrong.SiteID = "KAVR-043", "KAVR-043"
+		var a int
+		got := PickBestJAVR("KAVR-403", []JAVREngine{stubEngine("r18d", []models.ScrapedScene{wrong}, nil, &a)}, nil)
+		if got != nil {
+			t.Errorf("expected near-miss to be discarded, got %+v", got)
+		}
+	})
+
+	t.Run("fanza-form id matches dvd query", func(t *testing.T) {
+		s := fullJAVRScene()
+		s.SceneID, s.SiteID = "kavr00403", "kavr00403"
+		var a int
+		got := PickBestJAVR("KAVR-403", []JAVREngine{stubEngine("r18d", []models.ScrapedScene{s}, nil, &a)}, nil)
+		if got == nil || got.SceneID != "kavr00403" {
+			t.Errorf("expected fanza-form match to be kept, got %+v", got)
 		}
 	})
 
