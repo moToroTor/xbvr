@@ -140,6 +140,10 @@ export default {
               this.scrapingUrl = ''
               this.close()
             })
+            .catch(() => {
+              this.webError = 'The scene was scraped but matching the file failed. Find the scene in the Match dialog and assign it manually.'
+              this.scrapingUrl = ''
+            })
         })
         .catch(() => {
           this.webError = 'The scrape failed. Try another result or create the scene manually.'
