@@ -20,11 +20,34 @@
               <b-input v-model="sceneId" placeholder="Can be empty" ref="sceneIdInput"></b-input>
             </b-tooltip>
           </b-field>
-          <b-field :label="$t('Title')" label-position="on-border">            
-            <b-input v-model='title' ></b-input>            
+          <b-field :label="$t('Title')" label-position="on-border">
+            <b-input v-model='title' ></b-input>
           </b-field>
-          <b-button class="button is-primary" style="margin-right:1em" v-on:click="addScene(false)">{{$t('Create')}}</b-button>            
-          <b-button class="button is-primary" v-on:click="addScene(true)">{{$t('Create and Edit')}} </b-button>            
+          <hr>
+          <h6 class="title is-6">{{ $t("Search the internet") }}</h6>
+          <p class="is-size-7" style="margin-bottom:0.75em">{{ $t("Look for a page on a site XBVR can scrape before creating a manual scene.") }}</p>
+          <b-field grouped>
+            <b-input v-model='webQuery' expanded></b-input>
+            <b-button class="button is-info" :loading="searching" v-on:click="searchWeb()">{{$t('Search')}}</b-button>
+          </b-field>
+          <b-notification v-if="webError" type="is-danger is-light" :closable="false" style="margin-bottom:0.75em">{{ webError }}</b-notification>
+          <b-table v-if="candidates.length > 0" :data="candidates" :show-header="false" narrowed>
+            <b-table-column field="source" v-slot="props">
+              <strong>{{ props.row.scraper_name }}</strong>
+              <b-tag v-if="props.row.preferred" type="is-success is-light" size="is-small" style="margin-left:0.4em">{{ $t("Preferred") }}</b-tag>
+              <br>
+              <small><a :href="props.row.url" target="_blank" rel="noreferrer">{{ props.row.title || props.row.url }}</a></small>
+              <br>
+              <small class="has-text-grey">{{ props.row.reason }}</small>
+            </b-table-column>
+            <b-table-column field="action" numeric v-slot="props">
+              <b-button class="button is-primary is-small is-outlined" :loading="scrapingUrl === props.row.url" v-on:click="scrapeAndMatch(props.row)">{{ $t("Scrape & Match") }}</b-button>
+            </b-table-column>
+          </b-table>
+          <p v-else-if="webSearched" class="is-size-7 has-text-grey" style="margin-bottom:0.75em">{{ $t("No pages on supported sites found. Try fewer words or create the scene manually.") }}</p>
+          <hr>
+          <b-button class="button is-primary" style="margin-right:1em" v-on:click="addScene(false)">{{$t('Create')}}</b-button>
+          <b-button class="button is-primary" v-on:click="addScene(true)">{{$t('Create and Edit')}} </b-button>
         </div>
       </section>
     </div>
@@ -42,6 +65,12 @@ export default {
     return {
       title: '',
       sceneId: '',
+      webQuery: '',
+      searching: false,
+      webSearched: false,
+      candidates: [],
+      webError: '',
+      scrapingUrl: '',
       format,
       parseISO
     }
@@ -70,6 +99,7 @@ export default {
           .replace(/\.|_|\+|-/g, ' ').replace(/\s+/g, ' ').trim()
           .split(' ').filter(isNotCommonWord).join(' ')
           .replace(/ s /g, '\'s '))
+      this.webQuery = this.title
       this.$refs.sceneIdInput.focus()
     },
     close () {
@@ -78,7 +108,45 @@ export default {
     toInt (value, radix, defaultValue) {
       return parseInt(value, radix || 10) || defaultValue || 0
     },
-    addScene(showEdit) {      
+    searchWeb () {
+      this.searching = true
+      this.webError = ''
+      ky.post('/api/task/scrape-search', { json: { q: this.webQuery }, timeout: 60000 })
+        .json()
+        .then(resp => {
+          this.candidates = resp.candidates || []
+          this.webSearched = true
+          this.searching = false
+        })
+        .catch(() => {
+          this.webError = 'Search failed. Check your connection and try again.'
+          this.searching = false
+        })
+    },
+    scrapeAndMatch (candidate) {
+      this.scrapingUrl = candidate.url
+      this.webError = ''
+      ky.post('/api/task/singlescrape', { timeout: false, json: { site: candidate.scraper_id, sceneurl: candidate.url, additionalinfo: [] } })
+        .json()
+        .then(resp => {
+          if (!resp.scene || !resp.scene.scene_id) {
+            this.webError = 'The scrape returned no scene. Try another result or create the scene manually.'
+            this.scrapingUrl = ''
+            return
+          }
+          ky.post('/api/files/match', { json: { file_id: this.file.id, scene_id: resp.scene.scene_id } })
+            .then(() => {
+              this.$store.dispatch('files/load')
+              this.scrapingUrl = ''
+              this.close()
+            })
+        })
+        .catch(() => {
+          this.webError = 'The scrape failed. Try another result or create the scene manually.'
+          this.scrapingUrl = ''
+        })
+    },
+    addScene(showEdit) {
       ky.post('/api/scene/create', { json: { title: this.title, id: this.sceneId, filename: this.file.filename } })
         .json()
         .then(scene => {          
