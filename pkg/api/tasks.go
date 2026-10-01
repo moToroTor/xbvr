@@ -9,6 +9,7 @@ import (
 	restfulspec "github.com/emicklei/go-restful-openapi/v2"
 	"github.com/emicklei/go-restful/v3"
 	"github.com/xbapps/xbvr/pkg/models"
+	"github.com/xbapps/xbvr/pkg/scrape"
 	"github.com/xbapps/xbvr/pkg/tasks"
 )
 
@@ -25,6 +26,15 @@ type RequestScrapeJAVRBatch struct {
 type RequestScrapeTPDB struct {
 	ApiToken string `json:"apiToken"`
 	SceneUrl string `json:"sceneUrl"`
+}
+
+type RequestScrapeSearch struct {
+	Query string `json:"q"`
+}
+
+type ResponseScrapeSearch struct {
+	Response   string                   `json:"status"`
+	Candidates []scrape.ScrapeCandidate `json:"candidates"`
 }
 
 type RequestSingleScrape struct {
@@ -107,6 +117,10 @@ func (i TaskResource) WebService() *restful.WebService {
 
 	ws.Route(ws.POST("/scrape-tpdb").To(i.scrapeTPDB).
 		Metadata(restfulspec.KeyOpenAPITags, tags))
+
+	ws.Route(ws.POST("/scrape-search").To(i.scrapeSearch).
+		Metadata(restfulspec.KeyOpenAPITags, tags).
+		Writes(ResponseScrapeSearch{}))
 
 	ws.Route(ws.GET("/relink_alt_aource_scenes").To(i.relink_alt_aource_scenes).
 		Metadata(restfulspec.KeyOpenAPITags, tags))
@@ -257,6 +271,28 @@ func (i TaskResource) scrapeTPDB(req *restful.Request, resp *restful.Response) {
 	if r.ApiToken != "" && r.SceneUrl != "" {
 		go tasks.ScrapeTPDB(strings.TrimSpace(r.ApiToken), strings.TrimSpace(r.SceneUrl))
 	}
+}
+func (i TaskResource) scrapeSearch(req *restful.Request, resp *restful.Response) {
+	var r RequestScrapeSearch
+	if err := req.ReadEntity(&r); err != nil {
+		log.Error(err)
+		return
+	}
+	q := strings.TrimSpace(r.Query)
+	if q == "" {
+		resp.WriteHeaderAndEntity(http.StatusOK, ResponseScrapeSearch{Response: "OK"})
+		return
+	}
+	candidates, err := scrape.SearchScrapeCandidates(q)
+	if err != nil {
+		log.Error(err)
+		resp.WriteHeaderAndEntity(http.StatusOK, ResponseScrapeSearch{Response: "OK"})
+		return
+	}
+	if candidates == nil {
+		candidates = []scrape.ScrapeCandidate{}
+	}
+	resp.WriteHeaderAndEntity(http.StatusOK, ResponseScrapeSearch{Response: "OK", Candidates: candidates})
 }
 func (i TaskResource) relink_alt_aource_scenes(req *restful.Request, resp *restful.Response) {
 	go tasks.MatchAlternateSources()
