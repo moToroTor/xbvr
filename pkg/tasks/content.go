@@ -18,6 +18,7 @@ import (
 	"github.com/jinzhu/gorm"
 	jsoniter "github.com/json-iterator/go"
 	"github.com/markphelps/optional"
+	"github.com/sirupsen/logrus"
 	"github.com/xbapps/xbvr/pkg/common"
 	"github.com/xbapps/xbvr/pkg/config"
 	"github.com/xbapps/xbvr/pkg/externalreference"
@@ -456,6 +457,10 @@ func ScrapeJAVRBatch(codes []string, scraper string) {
 }
 
 func ScrapeJAVR(queryString string, scraper string) {
+	if scraper == "auto" {
+		ScrapeJAVRAuto(queryString)
+		return
+	}
 	if !models.CheckLock("scrape") {
 		models.CreateLock("scrape")
 		defer models.RemoveLock("scrape")
@@ -483,24 +488,54 @@ func ScrapeJAVR(queryString string, scraper string) {
 			scrape.ScrapeJavDB(&collectedScenes, queryString)
 		}
 
-		if len(collectedScenes) > 0 {
-			db, _ := models.GetDB()
-			for i := range collectedScenes {
-				models.SceneCreateUpdateFromExternal(db, collectedScenes[i])
-			}
-			db.Close()
+		persistJAVRScenes(collectedScenes, t0, tlog)
+	}
+}
 
-			tlog.Infof("Updating tag counts")
-			CountTags()
-			IndexScrapedScenes(&collectedScenes)
+// ScrapeJAVRAuto queries the JAV engines in priority order and persists only
+// the most complete result. Batch callers pass the scraper string through
+// unchanged, so no batch change is needed.
+func ScrapeJAVRAuto(queryString string) {
+	if !models.CheckLock("scrape") {
+		models.CreateLock("scrape")
+		defer models.RemoveLock("scrape")
+		t0 := time.Now()
+		tlog := log.WithField("task", "scrape")
+		tlog.Infof("Scraping started at %s", t0.Format("Mon Jan _2 15:04:05 2006"))
 
-			tlog.Infof("Scraped %v new scenes in %s",
-				len(collectedScenes),
-				time.Since(t0).Round(time.Second))
-		} else {
-			tlog.Infof("No new scenes scraped")
+		config.Config.ScraperSettings.Javr.JavrScraper = "auto"
+		config.SaveConfig()
+
+		best := scrape.PickBestJAVR(queryString, scrape.DefaultJAVREngines(), func() {
+			tlog.Infof("JAV auto: waiting %v before next engine", javBatchDelay)
+			time.Sleep(javBatchDelay)
+		})
+
+		var collectedScenes []models.ScrapedScene
+		if best != nil {
+			collectedScenes = append(collectedScenes, *best)
 		}
+		persistJAVRScenes(collectedScenes, t0, tlog)
+	}
+}
 
+func persistJAVRScenes(collectedScenes []models.ScrapedScene, t0 time.Time, tlog *logrus.Entry) {
+	if len(collectedScenes) > 0 {
+		db, _ := models.GetDB()
+		for i := range collectedScenes {
+			models.SceneCreateUpdateFromExternal(db, collectedScenes[i])
+		}
+		db.Close()
+
+		tlog.Infof("Updating tag counts")
+		CountTags()
+		IndexScrapedScenes(&collectedScenes)
+
+		tlog.Infof("Scraped %v new scenes in %s",
+			len(collectedScenes),
+			time.Since(t0).Round(time.Second))
+	} else {
+		tlog.Infof("No new scenes scraped")
 	}
 }
 
