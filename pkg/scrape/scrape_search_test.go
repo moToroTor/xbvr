@@ -181,6 +181,47 @@ func TestRankForSitePrefersAlternateOverFallback(t *testing.T) {
 	}
 }
 
+func TestPerformerPagesSortLast(t *testing.T) {
+	all := siteGroupScrapers()
+	results := []WebSearchResult{
+		{Title: "Performer page", URL: "https://www.sexlikereal.com/pornstars/ariela-donovan-3125"},
+		{Title: "Scene page", URL: "https://www.sexlikereal.com/scenes/ariela-donovan-85236"},
+		{Title: "VRPorn scene", URL: "https://vrporn.com/scene-z/"},
+	}
+	cands := RankScrapeCandidates(results, all)
+	if len(cands) != 2 {
+		t.Fatalf("candidates = %d, want 2 (SLR domain collapses)", len(cands))
+	}
+	// The SLR scene wins its domain; the VRPorn scene beats the SLR
+	// performer page because a performer page can never single-scrape
+	// to a scene, even on the preferred source.
+	if cands[0].URL != "https://www.sexlikereal.com/scenes/ariela-donovan-85236" {
+		t.Errorf("first = %q, want the SLR scene page", cands[0].URL)
+	}
+	if cands[1].ScraperID != "vrporn-single_scene" {
+		t.Errorf("second = %+v, want the VRPorn scene over the SLR performer page", cands[1])
+	}
+}
+
+func TestScopedSceneQuery(t *testing.T) {
+	all := siteGroupScrapers()
+	var ad []models.Scraper
+	for _, s := range all {
+		if s.ID == "analdelight" || s.ID == "analdelight-vrporn" {
+			ad = append(ad, s)
+		}
+	}
+	if got := scopedSceneQuery(ad, "Anal Delight Massage"); got != "site:sexlikereal.com inurl:scenes Anal Delight Massage" {
+		t.Errorf("scoped = %q, want SLR scene restriction", got)
+	}
+	if got := scopedSceneQuery([]models.Scraper{{ID: "badoinkvr", Domain: "badoinkvr.com"}}, "BadoinkVR Massage"); got != "" {
+		t.Errorf("scoped = %q, want empty without an SLR domain", got)
+	}
+	if got := scopedSceneQuery(nil, "Anything"); got != "" {
+		t.Errorf("scoped = %q, want empty for nil group", got)
+	}
+}
+
 func TestComposeSearchQuery(t *testing.T) {
 	cases := []struct {
 		name       string
