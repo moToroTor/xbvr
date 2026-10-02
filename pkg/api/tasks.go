@@ -29,7 +29,9 @@ type RequestScrapeTPDB struct {
 }
 
 type RequestScrapeSearch struct {
-	Query string `json:"q"`
+	Query      string   `json:"q"`
+	Site       string   `json:"site"`
+	Performers []string `json:"performers"`
 }
 
 type RequestScrapePick struct {
@@ -49,8 +51,9 @@ type ResponseScrapePick struct {
 }
 
 type ResponseScrapeSearch struct {
-	Response   string                   `json:"status"`
-	Candidates []scrape.ScrapeCandidate `json:"candidates"`
+	Response     string                   `json:"status"`
+	Candidates   []scrape.ScrapeCandidate `json:"candidates"`
+	UnknownHosts []string                 `json:"unknown_hosts"`
 }
 
 type RequestSingleScrape struct {
@@ -303,16 +306,27 @@ func (i TaskResource) scrapeSearch(req *restful.Request, resp *restful.Response)
 		resp.WriteHeaderAndEntity(http.StatusOK, ResponseScrapeSearch{Response: "OK"})
 		return
 	}
-	candidates, err := scrape.SearchScrapeCandidates(q)
-	if err != nil {
-		log.Error(err)
-		resp.WriteHeaderAndEntity(http.StatusOK, ResponseScrapeSearch{Response: "OK"})
-		return
+	out := ResponseScrapeSearch{Response: "OK", Candidates: []scrape.ScrapeCandidate{}, UnknownHosts: []string{}}
+	if strings.TrimSpace(r.Site) != "" {
+		cands, unknown, err := scrape.SearchScrapeCandidatesForSite(r.Site, q)
+		if err != nil {
+			log.Error(err)
+		} else {
+			out.Candidates = cands
+			out.UnknownHosts = unknown
+		}
+	} else {
+		candidates, err := scrape.SearchScrapeCandidates(q)
+		if err != nil {
+			log.Error(err)
+		} else if candidates != nil {
+			out.Candidates = candidates
+		}
 	}
-	if candidates == nil {
-		candidates = []scrape.ScrapeCandidate{}
+	if out.UnknownHosts == nil {
+		out.UnknownHosts = []string{}
 	}
-	resp.WriteHeaderAndEntity(http.StatusOK, ResponseScrapeSearch{Response: "OK", Candidates: candidates})
+	resp.WriteHeaderAndEntity(http.StatusOK, out)
 }
 
 // scrapePick single-scrapes one web-search candidate and optionally
@@ -343,10 +357,23 @@ func (i TaskResource) scrapePick(req *restful.Request, resp *restful.Response) {
 			resp.WriteErrorString(http.StatusBadRequest, "no query: title, site, or performers required")
 			return
 		}
-		candidates, err := scrape.SearchScrapeCandidates(q)
-		if err != nil {
-			log.Error(err)
-		} else if len(candidates) > 0 {
+		var candidates []scrape.ScrapeCandidate
+		if strings.TrimSpace(r.Site) != "" {
+			cands, _, err := scrape.SearchScrapeCandidatesForSite(r.Site, q)
+			if err != nil {
+				log.Error(err)
+			} else {
+				candidates = cands
+			}
+		} else {
+			cands, err := scrape.SearchScrapeCandidates(q)
+			if err != nil {
+				log.Error(err)
+			} else {
+				candidates = cands
+			}
+		}
+		if len(candidates) > 0 {
 			c := candidates[0]
 			cand = &c
 		}
