@@ -81,6 +81,106 @@ func TestParseDuckDuckGoHTML(t *testing.T) {
 	}
 }
 
+func siteGroupScrapers() []models.Scraper {
+	return []models.Scraper{
+		{ID: "slr-single_scene", Name: "SLR - Other Studios", Domain: "sexlikereal.com"},
+		{ID: "vrporn-single_scene", Name: "VRPorn - Other Studios", Domain: "vrporn.com"},
+		{ID: "badoinkvr", Name: "BadoinkVR", Domain: "badoinkvr.com"},
+		// Anal Delight: custom SLR primary with a custom VRPorn alternate.
+		{ID: "analdelight", Name: "Anal Delight", Domain: "sexlikereal.com"},
+		{ID: "analdelight-vrporn", Name: "Anal Delight", Domain: "vrporn.com", MasterSiteId: "analdelight"},
+		// RealityLovers: custom primary on its own domain, SLR alternate.
+		{ID: "realitylovers", Name: "RealityLovers", Domain: "realitylovers.com"},
+		{ID: "realitylovers-slr", Name: "RealityLovers", Domain: "sexlikereal.com", MasterSiteId: "realitylovers"},
+	}
+}
+
+func groupIDs(g []models.Scraper) map[string]bool {
+	out := map[string]bool{}
+	for _, s := range g {
+		out[s.ID] = true
+	}
+	return out
+}
+
+func TestResolveSiteGroup(t *testing.T) {
+	all := siteGroupScrapers()
+
+	ad := groupIDs(ResolveSiteGroup("Anal Delight", all))
+	if len(ad) != 2 || !ad["analdelight"] || !ad["analdelight-vrporn"] {
+		t.Errorf("Anal Delight group = %v, want primary + vrporn alternate", ad)
+	}
+
+	// Alternate links the other way too: seed by alternate name still
+	// finds the primary (both share the name here); seed by distinct ID.
+	rl := groupIDs(ResolveSiteGroup("realitylovers-slr", all))
+	if len(rl) != 2 || !rl["realitylovers"] || !rl["realitylovers-slr"] {
+		t.Errorf("RealityLovers group from alternate ID = %v, want both", rl)
+	}
+
+	if g := ResolveSiteGroup("No Such Studio", all); len(g) != 0 {
+		t.Errorf("unknown studio group = %v, want empty", groupIDs(g))
+	}
+	if g := ResolveSiteGroup("", all); len(g) != 0 {
+		t.Errorf("empty site group = %v, want empty", groupIDs(g))
+	}
+	// Name matching ignores case and punctuation.
+	if g := ResolveSiteGroup("anal delight!", all); len(g) != 2 {
+		t.Errorf("unnormalized name group size = %d, want 2", len(g))
+	}
+}
+
+func TestRankForSiteBoostsStudioGroup(t *testing.T) {
+	all := siteGroupScrapers()
+	results := []WebSearchResult{
+		{Title: "VRPorn copy", URL: "https://vrporn.com/anal-scene/"},
+		{Title: "SLR copy", URL: "https://www.sexlikereal.com/scenes/anal-scene/"},
+		{Title: "Unknown host", URL: "https://newstudio.example/x"},
+		{Title: "Unknown host again", URL: "https://newstudio.example/y"},
+		{Title: "Badoink", URL: "https://badoinkvr.com/vrpornvideo/x/"},
+	}
+	cands, unknown := RankScrapeCandidatesForSite(results, all, "Anal Delight")
+
+	if len(cands) != 3 {
+		t.Fatalf("candidates = %d, want 3 (unknown host dropped)", len(cands))
+	}
+	// Studio group first, SLR formatting still preferred within it, and
+	// scraped through the studio's own customs — not the generic fallbacks.
+	if cands[0].ScraperID != "analdelight" || !cands[0].Studio {
+		t.Errorf("first = %+v, want SLR primary studio pick", cands[0])
+	}
+	if cands[1].ScraperID != "analdelight-vrporn" || !cands[1].Studio {
+		t.Errorf("second = %+v, want vrporn alternate studio pick", cands[1])
+	}
+	if cands[2].ScraperID != "badoinkvr" || cands[2].Studio {
+		t.Errorf("third = %+v, want plain badoinkvr, not studio", cands[2])
+	}
+	if len(unknown) != 1 || unknown[0] != "newstudio" {
+		t.Errorf("unknown = %v, want deduped [newstudio]", unknown)
+	}
+}
+
+func TestRankForSitePrefersAlternateOverFallback(t *testing.T) {
+	all := siteGroupScrapers()
+	results := []WebSearchResult{
+		{Title: "RL main site", URL: "https://realitylovers.com/video/y"},
+		{Title: "RL SLR copy", URL: "https://www.sexlikereal.com/scenes/y/"},
+	}
+	cands, _ := RankScrapeCandidatesForSite(results, all, "RealityLovers")
+	if len(cands) != 2 {
+		t.Fatalf("candidates = %d, want 2", len(cands))
+	}
+	// SLR-alternate hit first (studio + preferred formatting), scraped
+	// through the studio's alternate, not the generic slr-single_scene
+	// fallback; main-site hit second through the studio custom.
+	if cands[0].ScraperID != "realitylovers-slr" || !cands[0].Studio {
+		t.Errorf("first = %+v, want realitylovers-slr studio pick", cands[0])
+	}
+	if cands[1].ScraperID != "realitylovers" || !cands[1].Studio {
+		t.Errorf("second = %+v, want realitylovers studio pick", cands[1])
+	}
+}
+
 func TestComposeSearchQuery(t *testing.T) {
 	cases := []struct {
 		name       string
