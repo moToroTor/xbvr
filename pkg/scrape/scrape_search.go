@@ -131,12 +131,13 @@ func RankScrapeCandidatesForSite(results []WebSearchResult, scrapers []models.Sc
 
 func rankScrapeCandidates(results []WebSearchResult, scrapers []models.Scraper, group map[string]bool) ([]ScrapeCandidate, []string) {
 	seenURL := map[string]bool{}
-	seenDomain := map[string]bool{}
+	keptDomain := map[string]int{}
 	seenUnknown := map[string]bool{}
 	var unknown []string
 	type ranked struct {
-		cand  ScrapeCandidate
-		order int
+		cand   ScrapeCandidate
+		usable bool
+		order  int
 	}
 	var out []ranked
 
@@ -166,12 +167,11 @@ func rankScrapeCandidates(results []WebSearchResult, scrapers []models.Scraper, 
 			}
 			continue
 		}
-		if seenDomain[core] {
-			continue
-		}
-		seenURL[r.URL] = true
-		seenDomain[core] = true
-
+		// A hit on a known non-scene path (SLR performer page) can never
+		// single-scrape to a scene. Domains without a known scene path
+		// stay neutral.
+		hint := scenePathHint(core)
+		usable := hint == "" || strings.Contains(strings.ToLower(u.EscapedPath()), hint)
 		pick := pickScraperForDomain(matched, group)
 		studio := group != nil && group[pick.ID]
 		cand := ScrapeCandidate{
@@ -184,14 +184,33 @@ func rankScrapeCandidates(results []WebSearchResult, scrapers []models.Scraper, 
 			Preferred:   core == preferredCoreDomain,
 			Studio:      studio,
 		}
-		out = append(out, ranked{cand: cand, order: i})
+		// A repeat domain collapses to one candidate, except a usable
+		// page (scene) replaces a kept unusable one (performer page):
+		// DDG often ranks the performer page first.
+		if kept, dup := keptDomain[core]; dup {
+			if usable && !out[kept].usable {
+				out[kept].cand = cand
+				out[kept].usable = true
+			}
+			continue
+		}
+		seenURL[r.URL] = true
+		keptDomain[core] = len(out)
+		out = append(out, ranked{cand: cand, usable: usable, order: i})
 	}
 
+	// Studio group first (explicit user setup), then usable pages, then
+	// preferred formatting, then raw search order.
 	sort.SliceStable(out, func(a, b int) bool {
 		sa := out[a].cand.Studio
 		sb := out[b].cand.Studio
 		if sa != sb {
 			return sa
+		}
+		ua := out[a].usable
+		ub := out[b].usable
+		if ua != ub {
+			return ua
 		}
 		pa := out[a].cand.Preferred
 		pb := out[b].cand.Preferred
@@ -242,6 +261,28 @@ func candidateReason(core string, matchCount int, studio bool) string {
 		return "Studio site"
 	}
 	return "Aggregator"
+}
+
+// scenePathHint maps a core domain to the URL path fragment identifying
+// scene pages. Only SLR is known (scenes under /scenes/, performer pages
+// under /pornstars/); unknown domains stay neutral.
+func scenePathHint(core string) string {
+	if core == "sexlikereal" {
+		return "/scenes/"
+	}
+	return ""
+}
+
+// scopedSceneQuery returns a DDG query restricted to scene pages on the
+// studio's SLR domain, or "" when the group has none. Only SLR has a known
+// scene path; other groups fall back to the open query.
+func scopedSceneQuery(group []models.Scraper, query string) string {
+	for _, s := range group {
+		if GetCoreDomain(strings.ToLower(s.Domain)) == "sexlikereal" && scenePathHint("sexlikereal") != "" {
+			return "site:" + strings.ToLower(s.Domain) + " inurl:scenes " + query
+		}
+	}
+	return ""
 }
 
 // normalizeSiteName folds a studio or scraper name for comparison.
@@ -321,13 +362,25 @@ func SearchScrapeCandidates(query string) ([]ScrapeCandidate, error) {
 
 // SearchScrapeCandidatesForSite is the studio-aware live path: same search,
 // but hits on the studio's own scraper group sort first with the studio's
-// scraper selected, and unmatched domains come back for clustering.
+// scraper selected, and unmatched domains come back for clustering. When
+// the group has an SLR domain, a scene-page-scoped query goes first (SLR
+// performer pages otherwise outrank scene pages); empty scoped results
+// fall back to the open query.
 func SearchScrapeCandidatesForSite(site, query string) ([]ScrapeCandidate, []string, error) {
+	scrapers := models.GetScrapers()
+	if scoped := scopedSceneQuery(ResolveSiteGroup(site, scrapers), query); scoped != "" {
+		results, err := SearchDuckDuckGo(scoped)
+		if err == nil {
+			if cands, unknown := RankScrapeCandidatesForSite(results, scrapers, site); len(cands) > 0 {
+				return cands, unknown, nil
+			}
+		}
+	}
 	results, err := SearchDuckDuckGo(query)
 	if err != nil {
 		return nil, nil, err
 	}
-	cands, unknown := RankScrapeCandidatesForSite(results, models.GetScrapers(), site)
+	cands, unknown := RankScrapeCandidatesForSite(results, scrapers, site)
 	return cands, unknown, nil
 }
 
