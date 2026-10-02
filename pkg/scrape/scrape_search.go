@@ -201,3 +201,16 @@ func SearchScrapeCandidates(query string) ([]ScrapeCandidate, error) {
 	}
 	return RankScrapeCandidates(results, models.GetScrapers()), nil
 }
+
+// ComposeSearchQuery builds the web-search query from structured input — a
+// site, a scene title, and performer names, as an RSS item provides. Empty
+// parts are dropped so sparse items still produce a usable query.
+func ComposeSearchQuery(title, site string, performers []string) string {
+	parts := make([]string, 0, 2+len(performers))
+	for _, p := range append([]string{site, title}, performers...) {
+		if p = strings.TrimSpace(p); p != "" {
+			parts = append(parts, p)
+		}
+	}
+	return strings.Join(parts, " ")
+}

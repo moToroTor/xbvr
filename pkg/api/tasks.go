@@ -46,6 +46,22 @@ type RequestScrapeJAVRChoose struct {
 	Scene  models.ScrapedScene `json:"scene"`
 }
 
+type RequestScrapePick struct {
+	Title      string   `json:"title"`
+	Site       string   `json:"site"`
+	Performers []string `json:"performers"`
+	ScraperID  string   `json:"scraper_id"`
+	URL        string   `json:"url"`
+	Wishlist   bool     `json:"wishlist"`
+}
+
+type ResponseScrapePick struct {
+	Response   string                  `json:"status"`
+	SceneID    uint                    `json:"scene_id"`
+	Wishlisted bool                    `json:"wishlisted"`
+	Candidate  *scrape.ScrapeCandidate `json:"candidate"`
+}
+
 type ResponseScrapeSearch struct {
 	Response   string                   `json:"status"`
 	Candidates []scrape.ScrapeCandidate `json:"candidates"`
@@ -142,6 +158,10 @@ func (i TaskResource) WebService() *restful.WebService {
 
 	ws.Route(ws.POST("/scrape-javr-choose").To(i.scrapeJAVRChoose).
 		Metadata(restfulspec.KeyOpenAPITags, tags))
+
+	ws.Route(ws.POST("/scrape-pick").To(i.scrapePick).
+		Metadata(restfulspec.KeyOpenAPITags, tags).
+		Writes(ResponseScrapePick{}))
 
 	ws.Route(ws.GET("/relink_alt_aource_scenes").To(i.relink_alt_aource_scenes).
 		Metadata(restfulspec.KeyOpenAPITags, tags))
@@ -347,6 +367,75 @@ func (i TaskResource) scrapeJAVRChoose(req *restful.Request, resp *restful.Respo
 	go tasks.PersistJAVRSceneChoice(r.Scene, r.Engine)
 	resp.WriteHeaderAndEntity(http.StatusOK, map[string]interface{}{"response": "OK"})
 }
+
+// scrapePick single-scrapes one web-search candidate and optionally
+// wishlists it, for sidecar clients (e.g. Wankarr RSS items not yet in the
+// library). With scraper_id+url the caller picked from /scrape-search
+// samples; without them the server trusts its own ranking (candidates[0]).
+// Idempotent: re-scraping a known URL returns the existing scene, and the
+// wishlist set is a no-op the second time. SceneID 0 means nothing was
+// found or the page scrape yielded no scene.
+func (i TaskResource) scrapePick(req *restful.Request, resp *restful.Response) {
+	var r RequestScrapePick
+	if err := req.ReadEntity(&r); err != nil {
+		log.Error(err)
+		return
+	}
+	out := ResponseScrapePick{Response: "OK"}
+
+	var cand *scrape.ScrapeCandidate
+	switch {
+	case r.ScraperID != "" && r.URL != "":
+		cand = &scrape.ScrapeCandidate{ScraperID: r.ScraperID, URL: strings.TrimSpace(r.URL)}
+	case r.ScraperID != "" || r.URL != "":
+		resp.WriteErrorString(http.StatusBadRequest, "scraper_id and url are required together")
+		return
+	default:
+		q := scrape.ComposeSearchQuery(r.Title, r.Site, r.Performers)
+		if q == "" {
+			resp.WriteErrorString(http.StatusBadRequest, "no query: title, site, or performers required")
+			return
+		}
+		candidates, err := scrape.SearchScrapeCandidates(q)
+		if err != nil {
+			log.Error(err)
+		} else if len(candidates) > 0 {
+			c := candidates[0]
+			cand = &c
+		}
+	}
+	out.Candidate = cand
+	if cand == nil {
+		resp.WriteHeaderAndEntity(http.StatusOK, out)
+		return
+	}
+
+	// Same empty-info encoding as the Files-page single scrape.
+	additionalInfo, _ := json.Marshal(nil)
+	scene := tasks.ScrapeSingleScene(cand.ScraperID, cand.URL, string(additionalInfo))
+	if scene.ID == 0 {
+		resp.WriteHeaderAndEntity(http.StatusOK, out)
+		return
+	}
+	out.SceneID = scene.ID
+
+	// A SET, not the /api/scene/toggle toggle: safe to repeat, and it keeps
+	// the wishlist gate for scenes that already have files.
+	wishlisted := scene.Wishlist
+	if r.Wishlist && !wishlisted && !scene.IsAvailable {
+		db, _ := models.GetDB()
+		defer db.Close()
+		var existing models.Scene
+		if err := existing.GetIfExistByPK(scene.ID); err == nil {
+			existing.Wishlist = true
+			existing.Save()
+			wishlisted = true
+		}
+	}
+	out.Wishlisted = wishlisted
+	resp.WriteHeaderAndEntity(http.StatusOK, out)
+}
+
 func (i TaskResource) relink_alt_aource_scenes(req *restful.Request, resp *restful.Response) {
 	go tasks.MatchAlternateSources()
 }
