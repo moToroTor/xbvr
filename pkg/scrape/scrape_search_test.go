@@ -80,3 +80,27 @@ func TestParseDuckDuckGoHTML(t *testing.T) {
 		t.Errorf("unexpected first hit: %+v", got[0])
 	}
 }
+
+func TestComposeSearchQuery(t *testing.T) {
+	cases := []struct {
+		name       string
+		title      string
+		site       string
+		performers []string
+		want       string
+	}{
+		{"full", "Great Scene", "SLR", []string{"Jane Doe", "Ann Lee"}, "SLR Great Scene Jane Doe Ann Lee"},
+		{"no performers", "Great Scene", "SLR", nil, "SLR Great Scene"},
+		{"no site", "Great Scene", "", []string{"Jane"}, "Great Scene Jane"},
+		{"title only", "Great Scene", "", nil, "Great Scene"},
+		{"blanks dropped", "  Great Scene ", " ", []string{"", " Jane "}, "Great Scene Jane"},
+		{"all empty", "", "", nil, ""},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if got := ComposeSearchQuery(c.title, c.site, c.performers); got != c.want {
+				t.Errorf("ComposeSearchQuery = %q, want %q", got, c.want)
+			}
+		})
+	}
+}

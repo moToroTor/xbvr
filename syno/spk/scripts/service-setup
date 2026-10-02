@@ -318,20 +318,13 @@ service_postinst()
 
 service_postupgrade()
 {
-    # The upgrade wizard pre-fills every box, so submitting rewrites the
-    # shown values. A wizard-less upgrade keeps the file, but never leaves
-    # the package without one.
-    if [ ! -f "${SYNOPKG_PKGVAR}/.env" ]; then
-        if db_use; then
-            ensure_db || return 1
-        fi
-        write_dotenv || return 1
-        write_volumes_reminder || return 1
-        claim_var_files
-        grant_video_access
-        return 0
-    fi
-    if [ -z "${wizard_port:-}" ] && [ -z "${wizard_db_use:-}" ] && [ -z "${wizard_video_share:-}" ] && [ -z "${wizard_video_subdirs:-}" ]; then
+    # An existing .env is the live config and always wins: DSM re-exports
+    # the stored wizard answers on upgrade, but those go stale (the root
+    # password is never stored, and the user may have edited .env by hand
+    # since install). Re-provisioning from them fails closed on auth and
+    # rewriting .env would clobber the working config, so upgrades only
+    # fix up ownership and grants. Fresh installs are postinst's job.
+    if [ -f "${SYNOPKG_PKGVAR}/.env" ]; then
         claim_var_files
         grant_video_access
         return 0

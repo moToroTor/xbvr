@@ -599,6 +599,42 @@ func TestVolumeDirsTolerance(t *testing.T) {
 	}
 }
 
+// Upgrading over an existing install must succeed even when DSM re-exports
+// the stored wizard answers and their database credentials have gone stale
+// (the root password is never stored, and the live config may have been
+// edited by hand since install). The live .env wins and is left untouched.
+func TestServicePostupgradeKeepsExistingEnv(t *testing.T) {
+	if _, err := exec.LookPath("sh"); err != nil {
+		t.Skip("sh not available")
+	}
+	pkgvar := t.TempDir()
+	dest := t.TempDir()
+	want := "XBVR_APPDIR='" + pkgvar + "'\nXBVR_WEB_PORT='9999'\nDATABASE_URL='mysql://xbvr:x@127.0.0.1:3306/xbvr'\n"
+	if err := os.WriteFile(filepath.Join(pkgvar, ".env"), []byte(want), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := runHook(t, pkgvar, dest, map[string]string{
+		"wizard_port":         "9999",
+		"wizard_db_use":       "true",
+		"wizard_db_host":      "127.0.0.1",
+		"wizard_db_port":      "3307",
+		"wizard_db_name":      "xbvr",
+		"wizard_db_user":      "xbvr",
+		"wizard_db_pass":      "stale",
+		"wizard_db_root_pass": "stale",
+		"MYSQL_CLIENT":        "/bin/false",
+	}, "service_postupgrade"); err != nil {
+		t.Fatalf("postupgrade failed on stale wizard answers: %v", err)
+	}
+	got, err := os.ReadFile(filepath.Join(pkgvar, ".env"))
+	if err != nil {
+		t.Fatalf(".env missing after upgrade: %v", err)
+	}
+	if string(got) != want {
+		t.Errorf("postupgrade rewrote .env from stale wizard answers:\n%s", got)
+	}
+}
+
 // Explicit sqlite opt-out keeps the fallback and skips MariaDB entirely.
 func TestExplicitSqliteSkipsMariaDB(t *testing.T) {
 	if _, err := exec.LookPath("sh"); err != nil {
