@@ -101,7 +101,10 @@
               <b-progress show-value :value="props.row._score * 100"></b-progress>
             </b-table-column>
             <b-table-column field="_assign" v-slot="props">
-              <button class="button is-primary is-outlined" @click="assign(props.row.scene_id)">{{ $t("Assign") }}</button>
+              <div class="buttons">
+                <button class="button is-primary is-outlined" @click="assign(props.row.scene_id)">{{ $t("Assign") }}</button>
+                <button :class="['button', 'is-info', props.row.wishlist ? '' : 'is-outlined']" @click="toggleWishlist(props.row)">{{ $t("Wish") }}</button>
+              </div>
             </b-table-column>
           </b-table>
         </div>
@@ -251,6 +254,15 @@ export default {
       } else {
         return u
       }
+    },
+    toggleWishlist: async function toggleWishlist (row) {
+      await ky.post('/api/scene/toggle', {
+        json: {
+          scene_id: row.scene_id,
+          list: 'wishlist'
+        }
+      })
+      row.wishlist = !row.wishlist
     },
     assign: async function assign (scene_id) {
       await ky.post('/api/files/match', {
