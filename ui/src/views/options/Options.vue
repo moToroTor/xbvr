@@ -20,6 +20,8 @@
                          @click="setActive('funscripts')"/>
             <b-menu-item :label="$t('Data import/export')" :active="active==='data-import-export'"
                          @click="setActive('data-import-export')"/>
+            <b-menu-item :label="$t('Duplicates')" :active="active==='data-duplicates'"
+                         @click="setActive('data-duplicates')"/>
           </b-menu-list>
           <b-menu-list :label="$t('Interfaces')">
             <b-menu-item :label="$t('Players')" :active="active==='interface_deovr'" @click="setActive('interface_deovr')"/>
@@ -40,6 +42,7 @@
           <SceneCreate v-show="active==='create-scene'"/>
           <Funscripts v-show="active==='funscripts'"/>
           <SceneDataImportExport v-show="active==='data-import-export'"/>
+          <Duplicates v-show="active==='data-duplicates'"/>
           <InterfaceWeb v-show="active==='interface_web'"/>
           <InterfaceDLNA v-show="active==='interface_dlna'"/>
           <InterfaceDeoVR v-show="active==='interface_deovr'"/>
@@ -66,9 +69,10 @@ import Schedules from './sections/Schedules.vue'
 import InterfaceDeoVR from './sections/InterfaceDeoVR.vue'
 import InterfaceAdvanced from './sections/InterfaceAdvanced.vue'
 import SceneMatchParams from './overlays/SceneMatchParams.vue'
+import Duplicates from './sections/OptionsDuplicates.vue'
 
 export default {
-  components: { Storage, SceneDataScrapers, SceneCreate, Funscripts, SceneDataImportExport, InterfaceWeb, InterfaceDLNA, InterfaceDeoVR, Cache, Previews, Schedules, InterfaceAdvanced,SceneMatchParams },
+  components: { Storage, SceneDataScrapers, SceneCreate, Funscripts, SceneDataImportExport, Duplicates, InterfaceWeb, InterfaceDLNA, InterfaceDeoVR, Cache, Previews, Schedules, InterfaceAdvanced,SceneMatchParams },
   data: function () {
     return {
       active: 'storage'
