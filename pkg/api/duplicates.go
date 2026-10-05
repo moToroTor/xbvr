@@ -39,7 +39,7 @@ func (i DuplicatesResource) list(req *restful.Request, resp *restful.Response) {
 }
 
 // link records loser as an alternate source under winner (manual match,
-// never reprocessed). Both scenes and their files are untouched.
+// never reprocessed). The loser's file matches migrate to the winner.
 func (i DuplicatesResource) link(req *restful.Request, resp *restful.Response) {
 	var r struct {
 		WinnerID uint `json:"winner_id"`
