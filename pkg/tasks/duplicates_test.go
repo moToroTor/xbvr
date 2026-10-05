@@ -1,6 +1,7 @@
 package tasks
 
 import (
+	"encoding/json"
 	"path/filepath"
 	"testing"
 
@@ -131,4 +132,55 @@ func TestFindLinkDismissDuplicates(t *testing.T) {
 	if len(groups) != 0 {
 		t.Errorf("dismissed pair still reported: %+v", groups)
 	}
+}
+
+func TestLinkDuplicateMigratesFiles(t *testing.T) {
+	db := dupesTestDB(t)
+	winner := models.Scene{SceneID: "main-1", ScraperId: "mainsite", Site: "Main", Title: "Migrate Me", Duration: 45}
+	if err := db.Create(&winner).Error; err != nil {
+		t.Fatal(err)
+	}
+	loser := models.Scene{SceneID: "alt-1", ScraperId: "altsite", Site: "Alt", Title: "Migrate Me", Duration: 45,
+		FilenamesArr: `["alt-file.mp4"]`}
+	if err := db.Create(&loser).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Create(&models.File{SceneID: loser.ID, Filename: "alt-file.mp4"}).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	// Keep the main-site scene: the alternate's file match must follow it.
+	if err := LinkDuplicate(db, winner.ID, loser.ID); err != nil {
+		t.Fatal(err)
+	}
+	var f models.File
+	if err := db.Where("filename = ?", "alt-file.mp4").First(&f).Error; err != nil {
+		t.Fatal(err)
+	}
+	if f.SceneID != winner.ID {
+		t.Errorf("file scene_id = %d, want winner %d", f.SceneID, winner.ID)
+	}
+	var w models.Scene
+	db.Where("id = ?", winner.ID).First(&w)
+	if !dupArrContains(w.FilenamesArr, "alt-file.mp4") {
+		t.Errorf("winner filenames_arr = %q, want alt-file.mp4 listed", w.FilenamesArr)
+	}
+	var l models.Scene
+	db.Where("id = ?", loser.ID).First(&l)
+	if dupArrContains(l.FilenamesArr, "alt-file.mp4") {
+		t.Errorf("loser filenames_arr = %q, want alt-file.mp4 removed", l.FilenamesArr)
+	}
+}
+
+func dupArrContains(stored, name string) bool {
+	var list []string
+	if err := json.Unmarshal([]byte(stored), &list); err != nil {
+		return false
+	}
+	for _, s := range list {
+		if s == name {
+			return true
+		}
+	}
+	return false
 }

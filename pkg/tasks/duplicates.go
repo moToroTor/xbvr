@@ -244,7 +244,9 @@ func DismissDuplicate(db *gorm.DB, aID, bID uint) error {
 
 // LinkDuplicate links loser as an alternate source under winner, exactly as
 // the relink task records a confirmed match (manual match_type 99999, which
-// reprocessing leaves alone). Nothing is deleted; files stay where they are.
+// reprocessing leaves alone). Nothing is deleted; the loser's file matches
+// migrate to the winner, mirroring what matchFile records (files.scene_id
+// plus both scenes' FilenamesArr).
 func LinkDuplicate(db *gorm.DB, winnerID, loserID uint) error {
 	var winner models.Scene
 	if err := db.Where("id = ?", winnerID).First(&winner).Error; err != nil {
@@ -302,5 +304,90 @@ func LinkDuplicate(db *gorm.DB, winnerID, loserID uint) error {
 			return err
 		}
 	}
+	return moveDupFiles(db, &winner, &loser)
+}
+
+// moveDupFiles re-points every file matched to loser at winner and moves the
+// corresponding entries between the scenes' FilenamesArr lists. Uses only the
+// passed handle (no global-DB side effects), so it stays unit-testable.
+func moveDupFiles(db *gorm.DB, winner, loser *models.Scene) error {
+	var files []models.File
+	if err := db.Where(&models.File{SceneID: loser.ID}).Find(&files).Error; err != nil {
+		return err
+	}
+	if len(files) == 0 {
+		return nil
+	}
+	moved := make([]string, 0, len(files))
+	for i := range files {
+		files[i].SceneID = winner.ID
+		if err := db.Save(&files[i]).Error; err != nil {
+			return err
+		}
+		moved = append(moved, files[i].Filename)
+	}
+	sort.Strings(moved)
+
+	winner.FilenamesArr = addDupFilenames(winner.FilenamesArr, moved)
+	if err := db.Model(winner).Update("filenames_arr", winner.FilenamesArr).Error; err != nil {
+		return err
+	}
+	if cleaned := removeDupFilenames(loser.FilenamesArr, moved); cleaned != loser.FilenamesArr {
+		loser.FilenamesArr = cleaned
+		return db.Model(loser).Update("filenames_arr", loser.FilenamesArr).Error
+	}
 	return nil
+}
+
+func parseDupFilenamesArr(stored string) []string {
+	var list []string
+	if err := json.Unmarshal([]byte(stored), &list); err != nil {
+		return []string{}
+	}
+	return list
+}
+
+func encodeDupFilenamesArr(list []string) string {
+	raw, err := json.Marshal(list)
+	if err != nil {
+		return "[]"
+	}
+	return string(raw)
+}
+
+// addDupFilenames appends names missing from the stored list (sorted input
+// keeps the result deterministic).
+func addDupFilenames(stored string, names []string) string {
+	list := parseDupFilenamesArr(stored)
+	seen := map[string]bool{}
+	for _, s := range list {
+		seen[s] = true
+	}
+	for _, n := range names {
+		if !seen[n] {
+			list, seen[n] = append(list, n), true
+		}
+	}
+	return encodeDupFilenamesArr(list)
+}
+
+// removeDupFilenames drops the moved names, preserving the rest verbatim.
+func removeDupFilenames(stored string, names []string) string {
+	if stored == "" {
+		return stored
+	}
+	drop := map[string]bool{}
+	for _, n := range names {
+		drop[n] = true
+	}
+	var kept []string
+	for _, s := range parseDupFilenamesArr(stored) {
+		if !drop[s] {
+			kept = append(kept, s)
+		}
+	}
+	if kept == nil {
+		return "[]"
+	}
+	return encodeDupFilenamesArr(kept)
 }
