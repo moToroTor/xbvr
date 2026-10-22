@@ -13,6 +13,19 @@ import (
 	"github.com/xbapps/xbvr/pkg/models"
 )
 
+var virtualTabooVidRegEx = regexp.MustCompile(`[?&]vid=(\d+)`)
+
+// virtualTabooSiteIDFromHref extracts the numeric scene id from a signup
+// link such as https://join.virtualtaboo.com/signup/signup.php?vid=1520.
+// Returns "" when the href carries no vid parameter.
+func virtualTabooSiteIDFromHref(href string) string {
+	m := virtualTabooVidRegEx.FindStringSubmatch(href)
+	if len(m) == 2 {
+		return m[1]
+	}
+	return ""
+}
+
 func VirtualTaboo(wg *models.ScrapeWG, updateSite bool, knownScenes []string, out chan<- models.ScrapedScene, singleSceneURL string, singeScrapeAdditionalInfo string, limitScraping bool) error {
 	defer wg.Done()
 	scraperID := "virtualtaboo"
@@ -44,6 +57,20 @@ func VirtualTaboo(wg *models.ScrapeWG, updateSite bool, knownScenes []string, ou
 				}
 			}
 		})
+
+		// Fallback for pages without the scene-ID script block (#2303):
+		// the signup link carries the numeric video id (?vid=NNNN).
+		if sc.SiteID == "" {
+			e.ForEach(`a[href*="vid="]`, func(_ int, e *colly.HTMLElement) {
+				if sc.SiteID != "" {
+					return
+				}
+				if vid := virtualTabooSiteIDFromHref(e.Attr("href")); vid != "" {
+					sc.SiteID = vid
+					sc.SceneID = slugify.Slugify(sc.Site) + "-" + sc.SiteID
+				}
+			})
+		}
 
 		// Title
 		e.ForEach(`div.video-detail h1`, func(id int, e *colly.HTMLElement) {
@@ -119,6 +146,8 @@ func VirtualTaboo(wg *models.ScrapeWG, updateSite bool, knownScenes []string, ou
 
 		if sc.SiteID != "" {
 			out <- sc
+		} else {
+			log.Warnf("VirtualTaboo: skipping %s, could not extract scene id (no `var video =` block, no vid= fallback)", sc.HomepageURL)
 		}
 	})
 
